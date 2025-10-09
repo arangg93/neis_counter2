@@ -9,28 +9,17 @@
 <script async defer src="https://buttons.github.io/buttons.js"></script>
 <style>
   :root{
-    --bg:#ffffff;
-    --panel:#f3f5f8;
-    --ink:#111827;
-    --muted:#6b7280;
-    --accent:#2563eb;
-    --border:#e5e7eb;
-    --warn:#f59e0b;
-    --bad:#ef4444;
-    --base:15px;
-    --title-size: 25px;
+    --bg:#ffffff; --panel:#f3f5f8; --ink:#111827; --muted:#6b7280;
+    --accent:#2563eb; --border:#e5e7eb; --warn:#f59e0b; --bad:#ef4444;
+    --base:15px; --title-size:25px;
   }
   *{box-sizing:border-box}
-  body{
-    margin:0; background:var(--bg); color:var(--ink);
-    font:600 var(--base)/1.6 ui-sans-serif,system-ui,Segoe UI,Roboto,Apple SD Gothic Neo,Malgun Gothic,Arial;
-  }
+  body{ margin:0; background:var(--bg); color:var(--ink);
+        font:600 var(--base)/1.6 ui-sans-serif,system-ui,Segoe UI,Roboto,Apple SD Gothic Neo,Malgun Gothic,Arial; }
   .wrap{max-width:980px; margin:16px auto 28px; padding:0 14px}
-  /* 카드 (다른 영역은 유지) */
   .card{background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:10px; margin:8px 0}
   .row{display:grid; grid-template-columns:170px 1fr; gap:10px; align-items:center}
   .top{display:flex; gap:10px; align-items:center; justify-content:space-between}
-  /* 헤더는 박스 제거 -> 평문 영역 전용 스타일 */
   .plain-header{padding:4px 0 10px}
   h1{margin:0; font-weight:900; font-size:var(--title-size)}
   .desc{margin:2px 0 0; color:var(--muted); font-size:var(--base)}
@@ -61,31 +50,31 @@
   #remainWrap{font-size:calc(var(--base) * 1.333)}
   #remain{color:var(--accent)}
   footer{color:var(--muted); text-align:center; padding:12px 8px; font-size:var(--base)}
-  /* 팁도 박스 제거 → 평문 간격만 */
   .tips-plain{margin:10px 0 8px}
-  @media (max-width:900px){ .row{grid-template-columns:1fr} .grid{grid-template-columns:1fr} .info-grid{grid-template-columns:1fr 1fr} }
+  @media (max-width:900px){
+    .row{grid-template-columns:1fr}
+    .grid{grid-template-columns:1fr}
+    .info-grid{grid-template-columns:1fr 1fr}
+  }
 </style>
 </head>
 <body>
   <div class="wrap">
-
-    <!-- 헤더: 박스 제거(plain text) -->
+    <!-- 헤더 -->
     <div class="plain-header top">
       <div>
-        <h1>[상우고] 독서하는 경호t의 나이스(NEIS) 글자수·바이트 계산기</h1>
+        <h1>상우고 독서하는 경호샘의 나이스(NEIS) 글자수·바이트 계산기</h1>
         <div class="desc">NEIS 입력 전, 공백 제외/포함 글자수와 전체 바이트를 실시간으로 확인하세요.</div>
       </div>
       <div>
-        <a class="github-button"
-           href="https://github.com/arangg93/neis_counter"
-           data-icon="octicon-star"
-           data-show-count="true"
+        <a class="github-button" href="https://github.com/arangg93/neis_counter"
+           data-icon="octicon-star" data-show-count="true"
            aria-label="Star arangg93/neis_counter on GitHub">Star</a>
         <button class="btn primary" id="btnSettings">설정</button>
       </div>
     </div>
 
-    <!-- 프리셋/한도 (유지) -->
+    <!-- 프리셋/한도 -->
     <div class="card">
       <div class="row">
         <div><strong>항목 선택</strong></div>
@@ -111,7 +100,7 @@
       <div id="warn" class="hint"></div>
     </div>
 
-    <!-- 항목/바이트 안내 (유지) -->
+    <!-- 항목/바이트 안내 -->
     <div class="card">
       <div class="info-grid">
         <div class="ibox"><b>자율활동</b> : 1500B</div>
@@ -122,7 +111,7 @@
       </div>
     </div>
 
-    <!-- 에디터 (유지) -->
+    <!-- 에디터 -->
     <div class="card">
       <div class="toolbar">
         <button class="btn" id="btnClear">지우기</button>
@@ -133,22 +122,16 @@
       <div class="hint">* 오른쪽 아래 모서리를 드래그하면 칸 크기를 조절할 수 있습니다.</div>
     </div>
 
-    <!-- 통계 (유지) -->
+    <!-- 통계 -->
     <div class="card">
       <div class="grid">
-        <div class="stat">
-          <h3>공백 제외 글자수 <span class="inline" id="noSpaceChars">: 0자</span></h3>
-        </div>
-        <div class="stat">
-          <h3>공백 포함 글자수 <span class="inline" id="withSpaceChars">: 0자</span></h3>
-        </div>
-        <div class="stat">
-          <h3 id="bytesLine">전체 바이트 : <span class="inline" id="bytesVal">0</span>바이트</h3>
-        </div>
+        <div class="stat"><h3>공백 제외 글자수 <span class="inline" id="noSpaceChars">: 0자</span></h3></div>
+        <div class="stat"><h3>공백 포함 글자수 <span class="inline" id="withSpaceChars">: 0자</span></h3></div>
+        <div class="stat"><h3 id="bytesLine">전체 바이트 : <span class="inline" id="bytesVal">0</span>바이트</h3></div>
       </div>
     </div>
 
-    <!-- 팁: 박스 제거(plain text) -->
+    <!-- 팁 (텍스트) -->
     <div class="tips-plain">
       <strong>NEIS 내보내기 팁</strong>
       <ul class="hint" style="margin:6px 0 0; line-height:1.5">
@@ -157,12 +140,10 @@
       </ul>
     </div>
 
-    <footer>
-      © 2025 NEIS Counter · Made with <strong>상우고등학교 교사 김경호t</strong>
-    </footer>
+    <footer>© 2025 NEIS Counter · Made with <strong>상우고등학교 교사 김경호t</strong></footer>
   </div>
 
-  <!-- 설정 다이얼로그(그대로) -->
+  <!-- 설정 다이얼로그 -->
   <dialog id="dlg" style="border:1px solid var(--border); border-radius:14px; padding:0; max-width:520px; width:95%;">
     <div style="padding:10px 12px; border-bottom:1px solid var(--border); font-weight:900">설정</div>
     <div style="padding:10px 12px">
@@ -181,7 +162,7 @@
   </dialog>
 
 <script>
-/* 규칙: 한글(가-힣/자모) 3B, 줄바꿈(\n) 2B, 그 외 1B */
+/* ===== 기본 요소 ===== */
 const box = document.getElementById('box');
 const noSpaceChars = document.getElementById('noSpaceChars');
 const withSpaceChars = document.getElementById('withSpaceChars');
@@ -192,18 +173,7 @@ const remain = document.getElementById('remain');
 const bar = document.getElementById('bar');
 const warn = document.getElementById('warn');
 
-(function restore(){
-  const t = localStorage.getItem('neis_text');
-  const l = localStorage.getItem('neis_limit');
-  const base = localStorage.getItem('neis_base');
-  const lh = localStorage.getItem('neis_lh');
-  if(t!==null) box.value = t;
-  if(l!==null) limit.value = +l;
-  if(base) document.documentElement.style.setProperty('--base', base+'px');
-  if(lh) box.style.lineHeight = lh;
-  calc();
-})();
-
+/* ===== 유틸 ===== */
 function isHangul(ch){ return /[가-힣ㄱ-ㅎㅏ-ㅣ]/.test(ch); }
 function neisBytes(s){
   let n=0;
@@ -215,6 +185,8 @@ function neisBytes(s){
   }
   return n;
 }
+
+/* ===== 계산 ===== */
 function calc(){
   const t = box.value;
   const nos = t.replace(/\s/g,'').length;
@@ -230,7 +202,7 @@ function calc(){
   bar.style.width = pct + '%';
 
   const left = Math.max(0, lim - bytes);
-  remain.textContent = left; // 남은 용량 숫자만 바뀜 (Bytes 고정 표기)
+  remain.textContent = left;
 
   if(bytes>lim){
     warn.textContent = `⚠ 한도 초과: ${bytes-lim} Bytes 초과했습니다.`;
@@ -245,22 +217,38 @@ function calc(){
   localStorage.setItem('neis_text', t);
   localStorage.setItem('neis_limit', lim);
 }
+
+/* ===== 이벤트 ===== */
 box.addEventListener('input', calc);
+
 preset.addEventListener('change', ()=>{
-  const v = preset.value; if(v==='none') return;
-  const n = Number((v||'').split('_')[0]); limit.value = n; calc();
+  const v = preset.value;
+  if(v==='none') return;
+  const n = Number((v||'').split('_')[0]);
+  limit.value = n;
+  calc();
 });
+
 limit.addEventListener('input', calc);
 
-document.getElementById('btnClear').addEventListener('click', ()=>{ box.value=''; calc(); box.focus(); });
+document.getElementById('btnClear').addEventListener('click', ()=>{
+  box.value=''; calc(); box.focus();
+});
 document.getElementById('btnCopy').addEventListener('click', async function(){
-  try{ await navigator.clipboard.writeText(box.value); const b=this; b.textContent='복사됨'; setTimeout(()=>b.textContent='복사',900);}catch(e){}
+  try{
+    await navigator.clipboard.writeText(box.value);
+    const b=this; b.textContent='복사됨'; setTimeout(()=>b.textContent='복사',900);
+  }catch(e){}
 });
 document.getElementById('btnPaste').addEventListener('click', async ()=>{
-  try{ const t=await navigator.clipboard.readText(); box.setRangeText(t, box.selectionStart, box.selectionEnd, 'end'); calc(); }catch(e){}
+  try{
+    const t=await navigator.clipboard.readText();
+    box.setRangeText(t, box.selectionStart, box.selectionEnd, 'end');
+    calc();
+  }catch(e){}
 });
 
-/* 설정 다이얼로그 */
+/* ===== 설정 다이얼로그 ===== */
 const dlg = document.getElementById('dlg');
 document.getElementById('btnSettings').addEventListener('click', ()=> dlg.showModal());
 document.getElementById('dlgClose').addEventListener('click', ()=> dlg.close());
@@ -279,8 +267,18 @@ lhRange.addEventListener('input', ()=>{
   localStorage.setItem('neis_lh', lhRange.value);
 });
 
-/* 최초 계산 */
-calc();
+/* ===== 초기 복원 & 최초 계산 ===== */
+(function restore(){
+  const t = localStorage.getItem('neis_text');
+  const l = localStorage.getItem('neis_limit');
+  const base = localStorage.getItem('neis_base');
+  const lh = localStorage.getItem('neis_lh');
+  if(t!==null) box.value = t;
+  if(l!==null) limit.value = +l;
+  if(base) document.documentElement.style.setProperty('--base', base+'px');
+  if(lh) box.style.lineHeight = lh;
+  calc();
+})();
 </script>
 </body>
 </html>
