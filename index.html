@@ -324,20 +324,18 @@ async function doSpellCheck(){
   if(!text.trim()){ alert('검사할 내용이 없습니다.'); return; }
   openSpellUI();
   try{
-    const data = await ltCheckWithFallback(text);
+    const res = await fetch(SPELL_API, {
+      method:'POST',
+      headers:{'content-type':'application/json'},
+      body: JSON.stringify({ text })
+    });
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
     ltMatches = Array.isArray(data.matches) ? data.matches : [];
     renderSpellResult(text, ltMatches);
   }catch(err){
     console.error(err);
-    const hint =
-      `요청이 차단되었을 수 있어요.<br>
-       · 애드블록/보안 확장 해제 후 재시도<br>
-       · 학교/사내망은 외부 POST 차단일 수 있음<br>
-       · 잠시 후 재시도(공용 서버 과부하 가능)`;
-    setSpellContent(
-      `<div style="color:#b91c1c">맞춤법 서버에 연결할 수 없습니다.<br>
-        <small>${escapeHtml(String(err))}</small><br><br>${hint}</div>`
-    );
+    setSpellContent(`<div style="color:#b91c1c">맞춤법 서버에 연결할 수 없습니다.<br><small>${String(err)}</small></div>`);
   }
 }
 
