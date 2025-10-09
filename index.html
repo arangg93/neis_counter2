@@ -1,0 +1,485 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>[상우고] 독서하는 경호t의 나이스(NEIS) 글자수·바이트 계산기</title> 
+<meta name="description" content="NEIS 입력 전, 공백 제외/포함 글자수와 전체 바이트를 실시간 계산" />
+<link rel="icon" href="data:," />
+<script async defer src="https://buttons.github.io/buttons.js"></script>
+<style>
+  :root{
+    --bg:#ffffff; --panel:#f3f5f8; --ink:#111827; --muted:#6b7280;
+    --accent:#2563eb; --border:#e5e7eb; --warn:#f59e0b; --bad:#ef4444;
+    --base:15px; --title-size:25px;
+  }
+  *{box-sizing:border-box}
+  body{ margin:0; background:var(--bg); color:var(--ink);
+        font:600 var(--base)/1.6 ui-sans-serif,system-ui,Segoe UI,Roboto,Apple SD Gothic Neo,Malgun Gothic,Arial; }
+  .wrap{max-width:980px; margin:16px auto 28px; padding:0 14px}
+  .card{background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:10px; margin:8px 0}
+  .row{display:grid; grid-template-columns:170px 1fr; gap:10px; align-items:center}
+  .top{display:flex; gap:10px; align-items:center; justify-content:space-between}
+  .plain-header{padding:4px 0 10px}
+  h1{margin:0; font-weight:900; font-size:var(--title-size)}
+  .desc{margin:2px 0 0; color:var(--muted); font-size:var(--base)}
+  .btn{border:1px solid var(--border); background:#fff; padding:6px 10px; border-radius:999px; cursor:pointer; font-size:var(--base)}
+  .btn.primary{color:var(--accent); border-color:var(--accent)}
+  .toolbar{display:flex; gap:6px; flex-wrap:wrap; margin:6px 0}
+  select,input{font-size:var(--base)}
+  select{padding:6px 8px; border:1px solid var(--border); border-radius:10px}
+  input[type=number]{padding:6px 8px; border:1px solid var(--border); border-radius:10px}
+
+  /* ===== 에디터 + 오버레이 ===== */
+  .editor-wrap{ position:relative; }
+  .editor-wrap textarea{
+    width:100%; min-height:300px; resize:vertical; outline:none;
+    border:1px solid var(--border); border-radius:12px; background:#fff; color:var(--ink);
+    padding:12px; font-size:var(--base); line-height:1.6; 
+  }
+  .overlay{
+    position:absolute; inset:0; border-radius:12px; 
+    padding:12px; white-space:pre-wrap; word-wrap:break-word; overflow:hidden;
+    font-size:var(--base); line-height:1.6; font-family:inherit;
+    color:transparent;               /* 본문 텍스트는 투명 */
+    pointer-events:none;             /* 클릭/드래그는 아래 textarea가 받도록 */
+  }
+  /* 맞춤법(빨간 물결) */
+  .hl-spell{
+    color:transparent; 
+    text-decoration: underline wavy 2px; 
+    text-decoration-color: var(--bad);
+    background:transparent;
+  }
+  /* 금칙어(주황 실선 + 옅은 배경) */
+  .hl-ban{
+    color:transparent;
+    border-bottom:2px solid var(--warn);
+    background:rgba(245,158,11,.15);
+  }
+
+  .hint{color:var(--muted); font-size:var(--base); margin-top:6px}
+  .grid{display:grid; gap:8px; grid-template-columns:repeat(3,1fr)}
+  .stat{background:#fff; border:1px solid var(--border); border-radius:12px; padding:10px}
+  .stat h3{margin:0; font-size:var(--base); font-weight:800}
+  .inline{color:var(--accent); font-weight:900}
+  .info-grid{display:grid; gap:8px; grid-template-columns:repeat(5,1fr)}
+  .ibox{background:#fff; border:1px solid var(--border); border-radius:12px; padding:10px; text-align:center; white-space:nowrap; font-size:var(--base)}
+  .ibox b{font-weight:900}
+  .meter{height:10px; background:#fff; border:1px solid var(--border); border-radius:999px; overflow:hidden}
+  .bar{height:100%; width:0%; background:linear-gradient(90deg,var(--accent),#93c5fd)}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace; font-size:var(--base)}
+  #warn{color:var(--muted); font-size:var(--base)}
+  #warn.big{font-size:calc(var(--base) * 1.333)}
+  #remainWrap{font-size:calc(var(--base) * 1.333)}
+  #remain{color:var(--accent)}
+  footer{color:var(--muted); text-align:center; padding:12px 8px; font-size:var(--base)}
+  .tips-plain{margin:10px 0 8px}
+  @media (max-width:900px){ .row{grid-template-columns:1fr} .grid{grid-template-columns:1fr} .info-grid{grid-template-columns:1fr 1fr} }
+
+  /* 맞춤법 팝업 */
+  dialog#spellDlg{border:1px solid var(--border); border-radius:14px; padding:0; max-width:720px; width:95%;}
+  .sp-hd{padding:10px 12px; border-bottom:1px solid var(--border); font-weight:900; display:flex; gap:12px; justify-content:space-between; align-items:center}
+  .sp-bd{padding:10px 12px; max-height:65vh; overflow:auto}
+  .sp-ft{padding:10px 12px; border-top:1px solid var(--border); display:flex; gap:8px; justify-content:flex-end}
+  .sp-item{border:1px dashed var(--border); border-radius:10px; padding:8px; margin-bottom:8px; background:#fff}
+  .sp-msg{color:#374151; margin:6px 0}
+  .sp-ctx{color:#374151; font-family:ui-monospace,Consolas,Menlo,monospace}
+  .sp-ctx mark{background:#fff59d; padding:0 2px}
+  .sp-row{display:flex; gap:8px; align-items:center; flex-wrap:wrap}
+</style>
+</head>
+<body>
+  <div class="wrap">
+
+    <!-- 헤더 -->
+    <div class="plain-header top">
+      <div>
+        <h1>[상우고] 독서하는 경호t의 나이스(NEIS) 글자수·바이트 계산기</h1>
+        <div class="desc">NEIS 입력 전, 공백 제외/포함 글자수와 전체 바이트를 실시간으로 확인하세요.</div>
+      </div>
+      <div>
+        <a class="github-button" href="https://github.com/arangg93/neis_counter"
+           data-icon="octicon-star" data-show-count="true"
+           aria-label="Star arangg93/neis_counter on GitHub">Star</a>
+        <button class="btn primary" id="btnSettings">설정</button>
+      </div>
+    </div>
+
+    <!-- 프리셋/한도 -->
+    <div class="card">
+      <div class="row">
+        <div><strong>항목 선택</strong></div>
+        <div>
+          <select id="preset">
+            <option value="none">직접 입력</option>
+            <option value="1500">자율활동 (1500B)</option>
+            <option value="1500_2">동아리활동 (1500B)</option>
+            <option value="2100">진로활동 (2100B)</option>
+            <option value="1500_3">교과세특 (1500B)</option>
+            <option value="1500_4">개인별세특 (1500B)</option>
+          </select>
+        </div>
+      </div>
+      <div class="row" style="margin-top:6px">
+        <div><strong>바이트 한도</strong></div>
+        <div class="mono">
+          <input id="limit" type="number" value="1500" min="1" step="1" style="width:140px" />
+          <span id="remainWrap" class="mono">남은 용량 : <span id="remain">1500</span> Bytes</span>
+        </div>
+      </div>
+      <div class="meter" style="margin-top:6px"><div class="bar" id="bar"></div></div>
+      <div id="warn" class="hint"></div>
+    </div>
+
+    <!-- 항목/바이트 안내 -->
+    <div class="card">
+      <div class="info-grid">
+        <div class="ibox"><b>자율활동</b> : 1500B</div>
+        <div class="ibox"><b>동아리활동</b> : 1500B</div>
+        <div class="ibox"><b>진로활동</b> : 2100B</div>
+        <div class="ibox"><b>교과세특</b> : 1500B</div>
+        <div class="ibox"><b>개인별세특</b> : 1500B</div>
+      </div>
+    </div>
+
+    <!-- 에디터 (오버레이 포함) -->
+    <div class="card">
+      <div class="toolbar">
+        <button class="btn" id="btnClear">지우기</button>
+        <button class="btn" id="btnCopy">복사</button>
+        <button class="btn" id="btnPaste">붙여넣기</button>
+        <button class="btn" id="btnSpell">맞춤법 확인</button>
+        <label style="display:flex;align-items:center;gap:6px;">
+          <input type="checkbox" id="toggleOverlay" checked /> 오버레이 표시
+        </label>
+      </div>
+
+      <div class="editor-wrap">
+        <div id="overlay" class="overlay" aria-hidden="true"></div>
+        <textarea id="box" placeholder="여기에 붙여 넣으세요."></textarea>
+      </div>
+      <div class="hint">* 오른쪽 아래 모서리를 드래그하면 칸 크기를 조절할 수 있습니다. · [맞춤법 확인]을 누르면 외부 서비스(LanguageTool)로 텍스트가 전송됩니다.</div>
+    </div>
+
+    <!-- 통계 -->
+    <div class="card">
+      <div class="grid">
+        <div class="stat"><h3>공백 제외 글자수 <span class="inline" id="noSpaceChars">: 0자</span></h3></div>
+        <div class="stat"><h3>공백 포함 글자수 <span class="inline" id="withSpaceChars">: 0자</span></h3></div>
+        <div class="stat"><h3 id="bytesLine">전체 바이트 : <span class="inline" id="bytesVal">0</span>바이트</h3></div>
+      </div>
+    </div>
+
+    <!-- 팁(텍스트) -->
+    <div class="tips-plain">
+      <strong>NEIS 내보내기 팁</strong>
+      <ul class="hint" style="margin:6px 0 0; line-height:1.5">
+        <li><strong>복사</strong> 버튼 또는 <span class="mono">Ctrl+C</span>로 복사 후 NEIS 입력란에 붙여넣기.</li>
+        <li>바이트가 한도를 초과하면 경고가 표시됩니다.</li>
+      </ul>
+    </div>
+
+    <footer>© 2025 NEIS Counter · Made with <strong>상우고등학교 교사 김경호t</strong></footer>
+  </div>
+
+  <!-- 설정 다이얼로그 -->
+  <dialog id="dlg" style="border:1px solid var(--border); border-radius:14px; padding:0; max-width:520px; width:95%;">
+    <div style="padding:10px 12px; border-bottom:1px solid var(--border); font-weight:900">설정</div>
+    <div style="padding:10px 12px">
+      <div style="margin-bottom:10px">
+        <label><strong>기본 글자 크기</strong> (<span id="fsVal">15</span>px)</label>
+        <input id="fsRange" type="range" min="12" max="24" step="1" value="15" style="width:100%" />
+      </div>
+      <div style="margin-bottom:10px">
+        <label><strong>에디터 줄 간격</strong> (<span id="lhVal">1.6</span>)</label>
+        <input id="lhRange" type="range" min="1.2" max="2.2" step="0.05" value="1.6" style="width:100%" />
+      </div>
+    </div>
+    <div style="padding:10px 12px; border-top:1px solid var(--border); display:flex; gap:8px; justify-content:flex-end">
+      <button class="btn" id="dlgClose">닫기</button>
+    </div>
+  </dialog>
+
+  <!-- 맞춤법 결과 다이얼로그 -->
+  <dialog id="spellDlg">
+    <div class="sp-hd">
+      <span>맞춤법/문법 검사 결과</span>
+      <label style="font-weight:600"><input type="checkbox" id="chkAll" checked style="margin-right:6px">전체 선택</label>
+    </div>
+    <div class="sp-bd" id="spellBody">검사 중...</div>
+    <div class="sp-ft">
+      <button class="btn" id="btnApply">선택 적용</button>
+      <button class="btn" id="btnSpellClose">닫기</button>
+    </div>
+  </dialog>
+
+<script>
+/* ===== 설정: 금칙어 사전 =====
+   여기에 단어/구를 추가하세요. (대소문자 구분 없음, 한국어는 그대로)
+   예: "개쩐다","존나","개같다","틀린표현"
+*/
+const BAN_LIST = [
+  "개쩐다","존나","개같다","시밤","씨발","미쳤냐", "불필요한군더더기표현"
+];
+
+const box = document.getElementById('box');
+const overlay = document.getElementById('overlay');
+const toggleOverlay = document.getElementById('toggleOverlay');
+
+const noSpaceChars = document.getElementById('noSpaceChars');
+const withSpaceChars = document.getElementById('withSpaceChars');
+const bytesVal = document.getElementById('bytesVal');
+const preset = document.getElementById('preset');
+const limit = document.getElementById('limit');
+const remain = document.getElementById('remain');
+const bar = document.getElementById('bar');
+const warn = document.getElementById('warn');
+
+/* 복원 */
+(function restore(){
+  const t = localStorage.getItem('neis_text');
+  const l = localStorage.getItem('neis_limit');
+  const base = localStorage.getItem('neis_base');
+  const lh = localStorage.getItem('neis_lh');
+  if(t!==null) box.value = t;
+  if(l!==null) limit.value = +l;
+  if(base) document.documentElement.style.setProperty('--base', base+'px');
+  if(lh) box.style.lineHeight = lh;
+  calc(); updateOverlay(); // 초기 렌더
+})();
+
+/* 바이트 계산 */
+function isHangul(ch){ return /[가-힣ㄱ-ㅎㅏ-ㅣ]/.test(ch); }
+function neisBytes(s){
+  let n=0;
+  for(let i=0;i<s.length;i++){
+    const c=s[i];
+    if(c==='\n'){ n+=2; continue; }
+    if(isHangul(c)){ n+=3; continue; }
+    n+=1;
+  }
+  return n;
+}
+function calc(){
+  const t = box.value;
+  const nos = t.replace(/\s/g,'').length;
+  const ws  = t.length;
+  const bytes = neisBytes(t);
+
+  noSpaceChars.textContent   = ': ' + nos + '자';
+  withSpaceChars.textContent = ': ' + ws  + '자';
+  bytesVal.textContent       = bytes.toString();
+
+  const lim = Number(limit.value||0);
+  const pct = Math.min(100, Math.round(bytes/Math.max(lim,1)*100));
+  bar.style.width = pct + '%';
+
+  const left = Math.max(0, lim - bytes);
+  remain.textContent = left;
+
+  if(bytes>lim){
+    warn.textContent = `⚠ 한도 초과: ${bytes-lim} Bytes 초과했습니다.`;
+    warn.classList.add('big'); warn.style.color = 'var(--bad)';
+  }else if(bytes>Math.max(200, lim*0.9)){
+    warn.textContent = `주의: 한도 임박 (${pct}% 사용)`;
+    warn.classList.remove('big'); warn.style.color = 'var(--warn)';
+  }else{
+    warn.textContent=''; warn.classList.remove('big'); warn.style.color='var(--muted)';
+  }
+
+  localStorage.setItem('neis_text', t);
+  localStorage.setItem('neis_limit', lim);
+}
+
+/* ===== 오버레이 하이라이트 ===== */
+let ltMatches = [];   // LanguageTool matches
+let banMatches = [];  // 금칙어 matches -> {offset,length}
+
+function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]); }
+function mergeHighlights(text, lt, bans){
+  // 타입: 'spell' | 'ban'
+  const ranges = [];
+  lt.forEach(m => ranges.push({start:m.offset, end:m.offset+m.length, type:'spell'}));
+  bans.forEach(b => ranges.push({start:b.offset, end:b.offset+b.length, type:'ban'}));
+  // 정렬 + 겹침 처리(겹치면 ban 우선)
+  ranges.sort((a,b)=> a.start===b.start ? (a.end-b.end) : (a.start-b.start));
+  // 분할
+  const out = [];
+  let cur = 0;
+  for(const r of ranges){
+    if(r.end<=cur) continue;               // 이미 포함
+    const start = Math.max(r.start, cur);
+    if(start>cur) out.push({text:text.slice(cur,start), cls:null});
+    const cls = (r.type==='ban'?'hl-ban':'hl-spell');
+    out.push({text:text.slice(start,r.end), cls});
+    cur = r.end;
+  }
+  if(cur < text.length) out.push({text:text.slice(cur), cls:null});
+  return out;
+}
+function renderOverlay(){
+  if(!toggleOverlay.checked){ overlay.innerHTML=''; return; }
+  const text = box.value;
+  const parts = mergeHighlights(text, ltMatches, banMatches);
+  // 빈 하이라이트면 투명 텍스트 전체를 한번 그려줘야 줄바꿈/스크롤 동기화가 안정적
+  if(parts.length===0){ overlay.textContent = text; return; }
+  const html = parts.map(p=>{
+    const esc = escapeHtml(p.text);
+    return p.cls ? `<mark class="${p.cls}">${esc}</mark>` : esc;
+  }).join('');
+  overlay.innerHTML = html;
+}
+function updateOverlay(){
+  // 금칙어 스캔 (전부 소문자 비교)
+  const text = box.value;
+  banMatches = [];
+  if(BAN_LIST.length){
+    const escaped = BAN_LIST.filter(Boolean).map(w=>w.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'));
+    if(escaped.length){
+      const rg = new RegExp('(' + escaped.join('|') + ')', 'gi');
+      let m; while((m = rg.exec(text)) !== null){
+        banMatches.push({offset:m.index, length:m[0].length});
+        // 무한루프 방지
+        if(m.index === rg.lastIndex) rg.lastIndex++;
+      }
+    }
+  }
+  renderOverlay();
+}
+// 스크롤/입력 동기화
+box.addEventListener('scroll', ()=>{ overlay.style.transform = `translate(${-box.scrollLeft}px, ${-box.scrollTop}px)`; });
+box.addEventListener('input', ()=>{ calc(); /* 실시간 금칙어만 보려면 아래 주석 해제 */ 
+  // updateOverlay();
+});
+toggleOverlay.addEventListener('change', renderOverlay);
+
+/* ===== 맞춤법 검사(LanguageTool) + 오버레이 ===== */
+const btnSpell = document.getElementById('btnSpell');
+const spellDlg = document.getElementById('spellDlg');
+const spellBody = document.getElementById('spellBody');
+const btnApply = document.getElementById('btnApply');
+const btnSpellClose = document.getElementById('btnSpellClose');
+const chkAll = document.getElementById('chkAll');
+
+btnSpell.addEventListener('click', async ()=>{
+  const text = box.value;
+  if(!text.trim()){ alert('검사할 내용이 없습니다.'); return; }
+  spellBody.textContent = '검사 중...';
+  spellDlg.showModal();
+  try{
+    const params = new URLSearchParams();
+    params.set('language','ko-KR');
+    params.set('text', text);
+    const res = await fetch('https://api.languagetool.org/v2/check', {
+      method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:params
+    });
+    if(!res.ok) throw new Error('서버 응답 오류');
+    const data = await res.json();
+    ltMatches = data.matches || [];
+    // 오버레이 갱신(맞춤법 + 금칙어)
+    updateOverlay();
+    renderSpellResult(text, ltMatches);
+  }catch(err){
+    console.error(err);
+    spellBody.innerHTML = `<div style="color:#b91c1c">맞춤법 서버에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.</div>`;
+  }
+});
+function renderSpellResult(text, matches){
+  if(!matches.length){
+    spellBody.innerHTML = `<div>오류가 발견되지 않았습니다. 🎉</div>`;
+    return;
+  }
+  const list = document.createElement('div'); list.id='spList';
+  matches.forEach((m,i)=>{
+    const start = Math.max(0, m.offset-18);
+    const end   = Math.min(text.length, m.offset+m.length+18);
+    const left  = text.slice(start, m.offset);
+    const mid   = text.slice(m.offset, m.offset+m.length);
+    const right = text.slice(m.offset+m.length, end);
+    const item = document.createElement('div');
+    item.className='sp-item';
+    item.innerHTML = `
+      <div class="sp-row">
+        <label><input type="checkbox" class="sp-apply" data-i="${i}" checked> 적용</label>
+        <span class="sp-msg">${escapeHtml(m.message||'')}</span>
+      </div>
+      <div class="sp-ctx"><span>${escapeHtml(left)}</span><mark>${escapeHtml(mid)}</mark><span>${escapeHtml(right)}</span></div>
+      <div class="sp-row" style="margin-top:6px">
+        <span>제안:</span>
+        <select class="sp-choice" data-i="${i}">
+          ${
+            (m.replacements||[]).slice(0,5).map(r=>`<option value="${escapeHtml(r.value)}">${escapeHtml(r.value)}</option>`).join('')
+            || `<option value="${escapeHtml(mid)}">${escapeHtml(mid)} (변경 안 함)</option>`
+          }
+        </select>
+        <small style="color:#6b7280">규칙: ${escapeHtml((m.rule&&m.rule.description)||m.rule?.id||'알 수 없음')}</small>
+      </div>`;
+    list.appendChild(item);
+  });
+  spellBody.innerHTML=''; spellBody.appendChild(list);
+  chkAll.checked = true;
+  chkAll.onchange = ()=>{ document.querySelectorAll('.sp-apply').forEach(cb=>cb.checked = chkAll.checked); };
+}
+btnApply.addEventListener('click', ()=>{
+  const text = box.value;
+  const picks = [];
+  document.querySelectorAll('.sp-apply').forEach(cb=>{
+    if(!cb.checked) return;
+    const i = +cb.dataset.i;
+    const m = ltMatches[i];
+    const sel = document.querySelector(`.sp-choice[data-i="${i}"]`);
+    const rep = sel ? sel.value : null;
+    if(!m || rep===null) return;
+    picks.push({offset:m.offset, length:m.length, replacement:rep});
+  });
+  if(picks.length===0){ spellDlg.close(); return; }
+  picks.sort((a,b)=>a.offset-b.offset);
+  let out = text;
+  for(let k=picks.length-1;k>=0;k--){
+    const p = picks[k];
+    out = out.slice(0,p.offset) + p.replacement + out.slice(p.offset+p.length);
+  }
+  box.value = out;
+  spellDlg.close();
+  calc();
+  // 변경 후 오프셋이 달라졌으니, 기존 하이라이트는 초기화하고 금칙어만 다시 반영
+  ltMatches = [];
+  updateOverlay();           // 금칙어만 표시(맞춤법은 다시 검사 시 반영)
+});
+
+/* UI: 기타 */
+const dlg = document.getElementById('dlg');
+document.getElementById('btnSettings').addEventListener('click', ()=> dlg.showModal());
+document.getElementById('dlgClose').addEventListener('click', ()=> dlg.close());
+const fsRange = document.getElementById('fsRange');
+const fsVal   = document.getElementById('fsVal');
+fsRange.addEventListener('input', ()=>{ fsVal.textContent = fsRange.value;
+  document.documentElement.style.setProperty('--base', fsRange.value+'px');
+  overlay.style.fontSize = fsRange.value+'px'; // 오버레이도 동기
+  localStorage.setItem('neis_base', fsRange.value);
+});
+const lhRange = document.getElementById('lhRange');
+const lhVal   = document.getElementById('lhVal');
+lhRange.addEventListener('input', ()=>{ lhVal.textContent = lhRange.value;
+  box.style.lineHeight = lhRange.value;
+  overlay.style.lineHeight = lhRange.value;    // 오버레이도 동기
+  localStorage.setItem('neis_lh', lhRange.value);
+});
+
+/* 이벤트 */
+box.addEventListener('input', calc);
+preset.addEventListener('change', ()=>{
+  const v = preset.value; if(v==='none') return;
+  const n = Number((v||'').split('_')[0]); limit.value = n; calc();
+});
+limit.addEventListener('input', calc);
+
+/* 스크롤 초기 동기화 */
+overlay.style.transform = `translate(${-box.scrollLeft}px, ${-box.scrollTop}px)`;
+
+/* 최초 계산 */
+calc();
+</script>
+</body>
+</html>
