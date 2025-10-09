@@ -215,13 +215,8 @@
   </dialog>
 
 <script>
-/* ===== 설정: 금칙어 사전 =====
-   여기에 단어/구를 추가하세요. (대소문자 구분 없음, 한국어는 그대로)
-   예: "개쩐다","존나","개같다","틀린표현"
-*/
-const BAN_LIST = [
-  "개쩐다","존나","개같다","시밤","씨발","미쳤냐", "불필요한군더더기표현"
-];
+/* ===== 설정: 금칙어 사전 ===== */
+const BAN_LIST = ["개쩐다","존나","개같다","시밤","씨발","미쳤냐","불필요한군더더기표현"];
 
 const box = document.getElementById('box');
 const overlay = document.getElementById('overlay');
@@ -296,19 +291,17 @@ function calc(){
 let ltMatches = [];   // LanguageTool matches
 let banMatches = [];  // 금칙어 matches -> {offset,length}
 
-function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]); }
+function escapeHtml(s){
+  return (s||'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
 function mergeHighlights(text, lt, bans){
-  // 타입: 'spell' | 'ban'
   const ranges = [];
   lt.forEach(m => ranges.push({start:m.offset, end:m.offset+m.length, type:'spell'}));
   bans.forEach(b => ranges.push({start:b.offset, end:b.offset+b.length, type:'ban'}));
-  // 정렬 + 겹침 처리(겹치면 ban 우선)
   ranges.sort((a,b)=> a.start===b.start ? (a.end-b.end) : (a.start-b.start));
-  // 분할
-  const out = [];
-  let cur = 0;
+  const out = []; let cur = 0;
   for(const r of ranges){
-    if(r.end<=cur) continue;               // 이미 포함
+    if(r.end<=cur) continue;
     const start = Math.max(r.start, cur);
     if(start>cur) out.push({text:text.slice(cur,start), cls:null});
     const cls = (r.type==='ban'?'hl-ban':'hl-spell');
@@ -322,7 +315,6 @@ function renderOverlay(){
   if(!toggleOverlay.checked){ overlay.innerHTML=''; return; }
   const text = box.value;
   const parts = mergeHighlights(text, ltMatches, banMatches);
-  // 빈 하이라이트면 투명 텍스트 전체를 한번 그려줘야 줄바꿈/스크롤 동기화가 안정적
   if(parts.length===0){ overlay.textContent = text; return; }
   const html = parts.map(p=>{
     const esc = escapeHtml(p.text);
@@ -331,7 +323,6 @@ function renderOverlay(){
   overlay.innerHTML = html;
 }
 function updateOverlay(){
-  // 금칙어 스캔 (전부 소문자 비교)
   const text = box.value;
   banMatches = [];
   if(BAN_LIST.length){
@@ -340,16 +331,14 @@ function updateOverlay(){
       const rg = new RegExp('(' + escaped.join('|') + ')', 'gi');
       let m; while((m = rg.exec(text)) !== null){
         banMatches.push({offset:m.index, length:m[0].length});
-        // 무한루프 방지
         if(m.index === rg.lastIndex) rg.lastIndex++;
       }
     }
   }
   renderOverlay();
 }
-// 스크롤/입력 동기화
 box.addEventListener('scroll', ()=>{ overlay.style.transform = `translate(${-box.scrollLeft}px, ${-box.scrollTop}px)`; });
-box.addEventListener('input', ()=>{ calc(); /* 실시간 금칙어만 보려면 아래 주석 해제 */ 
+box.addEventListener('input', ()=>{ calc(); /* 실시간 금칙어 하이라이트 원할 때 아래 주석 해제 */
   // updateOverlay();
 });
 toggleOverlay.addEventListener('change', renderOverlay);
@@ -377,8 +366,7 @@ btnSpell.addEventListener('click', async ()=>{
     if(!res.ok) throw new Error('서버 응답 오류');
     const data = await res.json();
     ltMatches = data.matches || [];
-    // 오버레이 갱신(맞춤법 + 금칙어)
-    updateOverlay();
+    updateOverlay();          // 맞춤법 + 금칙어 표시
     renderSpellResult(text, ltMatches);
   }catch(err){
     console.error(err);
@@ -443,12 +431,12 @@ btnApply.addEventListener('click', ()=>{
   box.value = out;
   spellDlg.close();
   calc();
-  // 변경 후 오프셋이 달라졌으니, 기존 하이라이트는 초기화하고 금칙어만 다시 반영
-  ltMatches = [];
-  updateOverlay();           // 금칙어만 표시(맞춤법은 다시 검사 시 반영)
+  ltMatches = [];     // 적용 후 맞춤법 하이라이트는 초기화
+  updateOverlay();    // 금칙어만 유지
 });
+btnSpellClose.addEventListener('click', ()=> spellDlg.close());
 
-/* UI: 기타 */
+/* 설정 다이얼로그 */
 const dlg = document.getElementById('dlg');
 document.getElementById('btnSettings').addEventListener('click', ()=> dlg.showModal());
 document.getElementById('dlgClose').addEventListener('click', ()=> dlg.close());
@@ -456,18 +444,18 @@ const fsRange = document.getElementById('fsRange');
 const fsVal   = document.getElementById('fsVal');
 fsRange.addEventListener('input', ()=>{ fsVal.textContent = fsRange.value;
   document.documentElement.style.setProperty('--base', fsRange.value+'px');
-  overlay.style.fontSize = fsRange.value+'px'; // 오버레이도 동기
+  overlay.style.fontSize = fsRange.value+'px';
   localStorage.setItem('neis_base', fsRange.value);
 });
 const lhRange = document.getElementById('lhRange');
 const lhVal   = document.getElementById('lhVal');
 lhRange.addEventListener('input', ()=>{ lhVal.textContent = lhRange.value;
   box.style.lineHeight = lhRange.value;
-  overlay.style.lineHeight = lhRange.value;    // 오버레이도 동기
+  overlay.style.lineHeight = lhRange.value;
   localStorage.setItem('neis_lh', lhRange.value);
 });
 
-/* 이벤트 */
+/* 기타 이벤트 */
 box.addEventListener('input', calc);
 preset.addEventListener('change', ()=>{
   const v = preset.value; if(v==='none') return;
