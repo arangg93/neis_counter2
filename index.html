@@ -56,6 +56,20 @@
     .grid{grid-template-columns:1fr}
     .info-grid{grid-template-columns:1fr 1fr}
   }
+
+  /* 맞춤법 결과 UI */
+  dialog#spellDlg{border:1px solid var(--border); border-radius:14px; padding:0; max-width:720px; width:95%;}
+  .sp-hd{padding:10px 12px; border-bottom:1px solid var(--border); font-weight:900; display:flex; gap:12px; justify-content:space-between; align-items:center}
+  .sp-bd{padding:10px 12px; max-height:65vh; overflow:auto; background:#fff}
+  .sp-ft{padding:10px 12px; border-top:1px solid var(--border); display:flex; gap:8px; justify-content:flex-end}
+  .sp-item{border:1px dashed var(--border); border-radius:10px; padding:8px; margin-bottom:8px; background:#fff}
+  .sp-msg{color:#374151; margin:6px 0}
+  .sp-ctx{color:#111827; font-family:ui-monospace,Consolas,Menlo,monospace}
+  .sp-ctx mark{background:#fff59d; padding:0 2px}
+
+  /* dialog 미지원 브라우저용 패널 */
+  .spell-panel{background:#fff; border:1px solid var(--border); border-radius:14px; padding:10px; margin:8px 0; display:none}
+  .hidden{display:none}
 </style>
 </head>
 <body>
@@ -117,9 +131,13 @@
         <button class="btn" id="btnClear">지우기</button>
         <button class="btn" id="btnCopy">복사</button>
         <button class="btn" id="btnPaste">붙여넣기</button>
+        <button class="btn" id="btnSpell">맞춤법 확인</button>
       </div>
       <textarea id="box" placeholder="여기에 붙여 넣으세요."></textarea>
-      <div class="hint">* 오른쪽 아래 모서리를 드래그하면 칸 크기를 조절할 수 있습니다.</div>
+      <div class="hint">* 오른쪽 아래 모서리를 드래그하면 칸 크기를 조절할 수 있습니다.
+      </div>
+      <div class="hint">* [맞춤법 확인]을 누르면 LanguageTool 서버로 텍스트가 전송됩니다.
+      </div>
     </div>
 
     <!-- 통계 -->
@@ -131,7 +149,7 @@
       </div>
     </div>
 
-    <!-- 팁 (텍스트) -->
+    <!-- 팁 -->
     <div class="tips-plain">
       <strong>NEIS 내보내기 팁</strong>
       <ul class="hint" style="margin:6px 0 0; line-height:1.5">
@@ -161,6 +179,31 @@
     </div>
   </dialog>
 
+  <!-- 맞춤법 결과: dialog + fallback 패널 -->
+  <dialog id="spellDlg">
+    <div class="sp-hd">
+      <span>맞춤법/문법 검사 결과</span>
+      <label style="font-weight:600"><input type="checkbox" id="chkAll" checked style="margin-right:6px">전체 선택</label>
+    </div>
+    <div class="sp-bd" id="spellBody">검사 중...</div>
+    <div class="sp-ft">
+      <button class="btn" id="btnApply">선택 적용</button>
+      <button class="btn" id="btnSpellClose">닫기</button>
+    </div>
+  </dialog>
+
+  <div id="spellPanel" class="spell-panel">
+    <div class="sp-hd">
+      <span>맞춤법/문법 검사 결과(호환 모드)</span>
+      <label style="font-weight:600"><input type="checkbox" id="chkAll2" checked style="margin-right:6px">전체 선택</label>
+    </div>
+    <div class="sp-bd" id="spellBody2">검사 중...</div>
+    <div class="sp-ft">
+      <button class="btn" id="btnApply2">선택 적용</button>
+      <button class="btn" id="btnSpellClose2">닫기</button>
+    </div>
+  </div>
+
 <script>
 /* ===== 기본 요소 ===== */
 const box = document.getElementById('box');
@@ -172,6 +215,18 @@ const limit = document.getElementById('limit');
 const remain = document.getElementById('remain');
 const bar = document.getElementById('bar');
 const warn = document.getElementById('warn');
+
+/* ===== 맞춤법 전역 ===== */
+let ltMatches = [];  // LanguageTool 결과 저장
+const supportsDialog = typeof HTMLDialogElement === 'function';
+const spellDlg = document.getElementById('spellDlg');
+const spellBody = document.getElementById('spellBody');
+const btnSpellClose = document.getElementById('btnSpellClose');
+const chkAll = document.getElementById('chkAll');
+
+const spellPanel = document.getElementById('spellPanel');
+const spellBody2 = document.getElementById('spellBody2');
+const chkAll2 = document.getElementById('chkAll2');
 
 /* ===== 유틸 ===== */
 function isHangul(ch){ return /[가-힣ㄱ-ㅎㅏ-ㅣ]/.test(ch); }
@@ -185,6 +240,7 @@ function neisBytes(s){
   }
   return n;
 }
+function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
 
 /* ===== 계산 ===== */
 function calc(){
@@ -218,6 +274,119 @@ function calc(){
   localStorage.setItem('neis_limit', lim);
 }
 
+/* ===== 맞춤법 검사 ===== */
+function openSpellUI(){
+  if(supportsDialog){ spellBody.textContent = '검사 중...'; spellDlg.showModal(); }
+  else { spellBody2.textContent = '검사 중...'; spellPanel.style.display = 'block'; scrollTo(0, spellPanel.offsetTop-12); }
+}
+function closeSpellUI(){
+  if(supportsDialog){ spellDlg.close(); }
+  else { spellPanel.style.display = 'none'; }
+}
+function setSpellContent(html){
+  if(supportsDialog) spellBody.innerHTML = html;
+  else spellBody2.innerHTML = html;
+}
+function allCheckbox(){
+  return supportsDialog ? document.querySelectorAll('.sp-apply') : document.querySelectorAll('.sp-apply2');
+}
+function valueSelectFor(i){
+  return supportsDialog ? document.querySelector(`.sp-choice[data-i="${i}"]`) : document.querySelector(`.sp-choice2[data-i="${i}"]`);
+}
+
+function renderSpellResult(text, matches){
+  if(!matches.length){
+    setSpellContent(`<div>오류가 발견되지 않았습니다. 🎉</div>`);
+    return;
+  }
+  const parts = matches.map((m,i)=>{
+    const start = Math.max(0, m.offset-18);
+    const end   = Math.min(text.length, m.offset+m.length+18);
+    const left  = escapeHtml(text.slice(start, m.offset));
+    const mid   = escapeHtml(text.slice(m.offset, m.offset+m.length));
+    const right = escapeHtml(text.slice(m.offset+m.length, end));
+    const opts = (m.replacements||[]).slice(0,5);
+    const selectOptions = (opts.length
+      ? opts.map(r=>`<option value="${escapeHtml(r.value)}">${escapeHtml(r.value)}</option>`).join('')
+      : `<option value="${mid}">${mid} (변경 안 함)</option>`);
+    const cls = supportsDialog ? {cb:'sp-apply', sel:'sp-choice'} : {cb:'sp-apply2', sel:'sp-choice2'};
+    return `
+      <div class="sp-item">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <label><input type="checkbox" class="${cls.cb}" data-i="${i}" checked> 적용</label>
+          <span class="sp-msg">${escapeHtml(m.message||'수정 제안')}</span>
+        </div>
+        <div class="sp-ctx"><span>${left}</span><mark>${mid}</mark><span>${right}</span></div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px">
+          <span>제안:</span>
+          <select class="${cls.sel}" data-i="${i}">
+            ${selectOptions}
+          </select>
+          <small style="color:#6b7280">규칙: ${escapeHtml((m.rule&&m.rule.description)||m.rule?.id||'알 수 없음')}</small>
+        </div>
+      </div>`;
+  }).join('');
+  setSpellContent(parts);
+  // 전체 선택 체크 박스 동기화
+  if(supportsDialog){
+    const all = document.querySelectorAll('.sp-apply');
+    const head = document.getElementById('chkAll'); head.checked = true;
+    head.onchange = ()=> all.forEach(cb => cb.checked = head.checked);
+  }else{
+    const all = document.querySelectorAll('.sp-apply2');
+    const head = document.getElementById('chkAll2'); head.checked = true;
+    head.onchange = ()=> all.forEach(cb => cb.checked = head.checked);
+  }
+}
+
+async function doSpellCheck(){
+  const text = box.value;
+  if(!text.trim()){ alert('검사할 내용이 없습니다.'); return; }
+  openSpellUI();
+  try{
+    const params = new URLSearchParams();
+    params.set('language','ko-KR');
+    params.set('text', text);
+    const res = await fetch('https://api.languagetool.org/v2/check', {
+      method:'POST',
+      headers:{'Content-Type':'application/x-www-form-urlencoded'},
+      body:params
+    });
+    if(!res.ok) throw new Error('서버 응답 오류');
+    const data = await res.json();
+    ltMatches = Array.isArray(data.matches) ? data.matches : [];
+    renderSpellResult(text, ltMatches);
+  }catch(err){
+    console.error(err);
+    setSpellContent(`<div style="color:#b91c1c">맞춤법 서버에 연결할 수 없습니다. 네트워크 상태를 확인한 뒤 다시 시도해 주세요.</div>`);
+  }
+}
+
+function applySpellFixes(){
+  const text = box.value;
+  const picks = [];
+  const cbs = allCheckbox();
+  cbs.forEach(cb=>{
+    if(!cb.checked) return;
+    const i = +cb.dataset.i;
+    const m = ltMatches[i];
+    const sel = valueSelectFor(i);
+    const rep = sel ? sel.value : null;
+    if(!m || rep===null) return;
+    picks.push({offset:m.offset, length:m.length, replacement:rep});
+  });
+  if(picks.length===0){ closeSpellUI(); return; }
+  picks.sort((a,b)=>a.offset-b.offset);
+  let out = text;
+  for(let k=picks.length-1;k>=0;k--){
+    const p = picks[k];
+    out = out.slice(0,p.offset) + p.replacement + out.slice(p.offset+p.length);
+  }
+  box.value = out;
+  closeSpellUI();
+  calc();
+}
+
 /* ===== 이벤트 ===== */
 box.addEventListener('input', calc);
 
@@ -247,6 +416,14 @@ document.getElementById('btnPaste').addEventListener('click', async ()=>{
     calc();
   }catch(e){}
 });
+
+// 맞춤법 버튼 & 적용/닫기
+document.getElementById('btnSpell').addEventListener('click', doSpellCheck);
+document.getElementById('btnSpellClose').addEventListener('click', closeSpellUI);
+document.getElementById('btnApply').addEventListener('click', applySpellFixes);
+// fallback 패널용 버튼
+document.getElementById('btnSpellClose2').addEventListener('click', closeSpellUI);
+document.getElementById('btnApply2').addEventListener('click', applySpellFixes);
 
 /* ===== 설정 다이얼로그 ===== */
 const dlg = document.getElementById('dlg');
