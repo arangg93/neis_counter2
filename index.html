@@ -44,19 +44,8 @@
     color:transparent;               /* 본문 텍스트는 투명 */
     pointer-events:none;             /* 클릭/드래그는 아래 textarea가 받도록 */
   }
-  /* 맞춤법(빨간 물결) */
-  .hl-spell{
-    color:transparent; 
-    text-decoration: underline wavy 2px; 
-    text-decoration-color: var(--bad);
-    background:transparent;
-  }
-  /* 금칙어(주황 실선 + 옅은 배경) */
-  .hl-ban{
-    color:transparent;
-    border-bottom:2px solid var(--warn);
-    background:rgba(245,158,11,.15);
-  }
+  .hl-spell{ color:transparent; text-decoration: underline wavy 2px; text-decoration-color: var(--bad); background:transparent; }
+  .hl-ban{ color:transparent; border-bottom:2px solid var(--warn); background:rgba(245,158,11,.15); }
 
   .hint{color:var(--muted); font-size:var(--base); margin-top:6px}
   .grid{display:grid; gap:8px; grid-template-columns:repeat(3,1fr)}
@@ -215,13 +204,13 @@
   </dialog>
 
 <script>
-/* ===== 설정: 금칙어 사전 ===== */
+/* ===== 금칙어 사전 ===== */
 const BAN_LIST = ["개쩐다","존나","개같다","시밤","씨발","미쳤냐","불필요한군더더기표현"];
 
+/* ===== 요소 참조 ===== */
 const box = document.getElementById('box');
 const overlay = document.getElementById('overlay');
 const toggleOverlay = document.getElementById('toggleOverlay');
-
 const noSpaceChars = document.getElementById('noSpaceChars');
 const withSpaceChars = document.getElementById('withSpaceChars');
 const bytesVal = document.getElementById('bytesVal');
@@ -231,20 +220,11 @@ const remain = document.getElementById('remain');
 const bar = document.getElementById('bar');
 const warn = document.getElementById('warn');
 
-/* 복원 */
-(function restore(){
-  const t = localStorage.getItem('neis_text');
-  const l = localStorage.getItem('neis_limit');
-  const base = localStorage.getItem('neis_base');
-  const lh = localStorage.getItem('neis_lh');
-  if(t!==null) box.value = t;
-  if(l!==null) limit.value = +l;
-  if(base) document.documentElement.style.setProperty('--base', base+'px');
-  if(lh) box.style.lineHeight = lh;
-  calc(); updateOverlay(); // 초기 렌더
-})();
+/* ===== 하이라이트 전역(선언을 최상단으로!!) ===== */
+let ltMatches = [];   // LanguageTool 결과
+let banMatches = [];  // 금칙어 결과
 
-/* 바이트 계산 */
+/* ===== 공통 유틸 ===== */
 function isHangul(ch){ return /[가-힣ㄱ-ㅎㅏ-ㅣ]/.test(ch); }
 function neisBytes(s){
   let n=0;
@@ -256,6 +236,11 @@ function neisBytes(s){
   }
   return n;
 }
+function escapeHtml(s){
+  return (s||'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+
+/* ===== 계산 ===== */
 function calc(){
   const t = box.value;
   const nos = t.replace(/\s/g,'').length;
@@ -287,13 +272,7 @@ function calc(){
   localStorage.setItem('neis_limit', lim);
 }
 
-/* ===== 오버레이 하이라이트 ===== */
-let ltMatches = [];   // LanguageTool matches
-let banMatches = [];  // 금칙어 matches -> {offset,length}
-
-function escapeHtml(s){
-  return (s||'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
-}
+/* ===== 오버레이 ===== */
 function mergeHighlights(text, lt, bans){
   const ranges = [];
   lt.forEach(m => ranges.push({start:m.offset, end:m.offset+m.length, type:'spell'}));
@@ -304,8 +283,7 @@ function mergeHighlights(text, lt, bans){
     if(r.end<=cur) continue;
     const start = Math.max(r.start, cur);
     if(start>cur) out.push({text:text.slice(cur,start), cls:null});
-    const cls = (r.type==='ban'?'hl-ban':'hl-spell');
-    out.push({text:text.slice(start,r.end), cls});
+    out.push({text:text.slice(start,r.end), cls: (r.type==='ban'?'hl-ban':'hl-spell')});
     cur = r.end;
   }
   if(cur < text.length) out.push({text:text.slice(cur), cls:null});
@@ -337,42 +315,12 @@ function updateOverlay(){
   }
   renderOverlay();
 }
-box.addEventListener('scroll', ()=>{ overlay.style.transform = `translate(${-box.scrollLeft}px, ${-box.scrollTop}px)`; });
-box.addEventListener('input', ()=>{ calc(); /* 실시간 금칙어 하이라이트 원할 때 아래 주석 해제 */
-  // updateOverlay();
-});
-toggleOverlay.addEventListener('change', renderOverlay);
 
-/* ===== 맞춤법 검사(LanguageTool) + 오버레이 ===== */
-const btnSpell = document.getElementById('btnSpell');
+/* ===== 맞춤법(LanguageTool) ===== */
 const spellDlg = document.getElementById('spellDlg');
 const spellBody = document.getElementById('spellBody');
-const btnApply = document.getElementById('btnApply');
 const btnSpellClose = document.getElementById('btnSpellClose');
 const chkAll = document.getElementById('chkAll');
-
-btnSpell.addEventListener('click', async ()=>{
-  const text = box.value;
-  if(!text.trim()){ alert('검사할 내용이 없습니다.'); return; }
-  spellBody.textContent = '검사 중...';
-  spellDlg.showModal();
-  try{
-    const params = new URLSearchParams();
-    params.set('language','ko-KR');
-    params.set('text', text);
-    const res = await fetch('https://api.languagetool.org/v2/check', {
-      method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:params
-    });
-    if(!res.ok) throw new Error('서버 응답 오류');
-    const data = await res.json();
-    ltMatches = data.matches || [];
-    updateOverlay();          // 맞춤법 + 금칙어 표시
-    renderSpellResult(text, ltMatches);
-  }catch(err){
-    console.error(err);
-    spellBody.innerHTML = `<div style="color:#b91c1c">맞춤법 서버에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.</div>`;
-  }
-});
 function renderSpellResult(text, matches){
   if(!matches.length){
     spellBody.innerHTML = `<div>오류가 발견되지 않았습니다. 🎉</div>`;
@@ -409,7 +357,38 @@ function renderSpellResult(text, matches){
   chkAll.checked = true;
   chkAll.onchange = ()=>{ document.querySelectorAll('.sp-apply').forEach(cb=>cb.checked = chkAll.checked); };
 }
-btnApply.addEventListener('click', ()=>{
+
+/* ===== 이벤트 바인딩 ===== */
+document.getElementById('btnClear').addEventListener('click', ()=>{ box.value=''; calc(); updateOverlay(); box.focus(); });
+document.getElementById('btnCopy').addEventListener('click', async function(){
+  try{ await navigator.clipboard.writeText(box.value); const b=this; b.textContent='복사됨'; setTimeout(()=>b.textContent='복사',900);}catch(e){}
+});
+document.getElementById('btnPaste').addEventListener('click', async ()=>{
+  try{ const t=await navigator.clipboard.readText(); box.setRangeText(t, box.selectionStart, box.selectionEnd, 'end'); calc(); updateOverlay(); }catch(e){}
+});
+document.getElementById('btnSpell').addEventListener('click', async ()=>{
+  const text = box.value;
+  if(!text.trim()){ alert('검사할 내용이 없습니다.'); return; }
+  spellBody.textContent = '검사 중...';
+  spellDlg.showModal();
+  try{
+    const params = new URLSearchParams();
+    params.set('language','ko-KR'); params.set('text', text);
+    const res = await fetch('https://api.languagetool.org/v2/check', {
+      method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:params
+    });
+    if(!res.ok) throw new Error('서버 응답 오류');
+    const data = await res.json();
+    ltMatches = data.matches || [];
+    updateOverlay();
+    renderSpellResult(text, ltMatches);
+  }catch(err){
+    console.error(err);
+    spellBody.innerHTML = `<div style="color:#b91c1c">맞춤법 서버에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.</div>`;
+  }
+});
+document.getElementById('btnSpellClose').addEventListener('click', ()=> spellDlg.close());
+document.getElementById('btnApply').addEventListener('click', ()=>{
   const text = box.value;
   const picks = [];
   document.querySelectorAll('.sp-apply').forEach(cb=>{
@@ -431,43 +410,34 @@ btnApply.addEventListener('click', ()=>{
   box.value = out;
   spellDlg.close();
   calc();
-  ltMatches = [];     // 적용 후 맞춤법 하이라이트는 초기화
-  updateOverlay();    // 금칙어만 유지
-});
-btnSpellClose.addEventListener('click', ()=> spellDlg.close());
-
-/* 설정 다이얼로그 */
-const dlg = document.getElementById('dlg');
-document.getElementById('btnSettings').addEventListener('click', ()=> dlg.showModal());
-document.getElementById('dlgClose').addEventListener('click', ()=> dlg.close());
-const fsRange = document.getElementById('fsRange');
-const fsVal   = document.getElementById('fsVal');
-fsRange.addEventListener('input', ()=>{ fsVal.textContent = fsRange.value;
-  document.documentElement.style.setProperty('--base', fsRange.value+'px');
-  overlay.style.fontSize = fsRange.value+'px';
-  localStorage.setItem('neis_base', fsRange.value);
-});
-const lhRange = document.getElementById('lhRange');
-const lhVal   = document.getElementById('lhVal');
-lhRange.addEventListener('input', ()=>{ lhVal.textContent = lhRange.value;
-  box.style.lineHeight = lhRange.value;
-  overlay.style.lineHeight = lhRange.value;
-  localStorage.setItem('neis_lh', lhRange.value);
+  ltMatches = [];        // 적용 후 맞춤법 하이라이트는 초기화
+  updateOverlay();       // 금칙어만 유지
 });
 
-/* 기타 이벤트 */
-box.addEventListener('input', calc);
+box.addEventListener('scroll', ()=>{ overlay.style.transform = `translate(${-box.scrollLeft}px, ${-box.scrollTop}px)`; });
+box.addEventListener('input', ()=>{ calc(); /* 금칙어 실시간 원하면 아래 주석 해제 */ /* updateOverlay(); */ });
+toggleOverlay.addEventListener('change', renderOverlay);
+
 preset.addEventListener('change', ()=>{
   const v = preset.value; if(v==='none') return;
   const n = Number((v||'').split('_')[0]); limit.value = n; calc();
 });
 limit.addEventListener('input', calc);
 
-/* 스크롤 초기 동기화 */
+/* ===== 초기화(모든 선언/함수 정의가 끝난 뒤 호출) ===== */
+function restore(){
+  const t = localStorage.getItem('neis_text');
+  const l = localStorage.getItem('neis_limit');
+  const base = localStorage.getItem('neis_base');
+  const lh = localStorage.getItem('neis_lh');
+  if(t!==null) box.value = t;
+  if(l!==null) limit.value = +l;
+  if(base){ document.documentElement.style.setProperty('--base', base+'px'); overlay.style.fontSize = base+'px'; }
+  if(lh){ box.style.lineHeight = lh; overlay.style.lineHeight = lh; }
+}
+restore();
 overlay.style.transform = `translate(${-box.scrollLeft}px, ${-box.scrollTop}px)`;
-
-/* 최초 계산 */
-calc();
+calc(); updateOverlay();
 </script>
 </body>
 </html>
