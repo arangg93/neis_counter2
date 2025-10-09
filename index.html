@@ -190,6 +190,9 @@ const spellCard = document.getElementById('spellCard');
 const spellBody = document.getElementById('spellBody');
 const chkAll = document.getElementById('chkAll');
 
+/*** 설정: 여기만 본인 Worker 주소로 바꾸세요 ***/
+const SPELL_API = 'https://neis-spell.arangg93.workers.dev/check';
+
 /* ===== 유틸 ===== */
 function isHangul(ch){ return /[가-힣ㄱ-ㅎㅏ-ㅣ]/.test(ch); }
 function neisBytes(s){
