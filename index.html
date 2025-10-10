@@ -375,7 +375,7 @@ async function doSpellCheck(){
 }
 
 function applySpellFixes(){
-  // 검사·치환 기준이 된 원문 (줄바꿈/태그 정리본)
+  // 검사 기준이 된 정리본
   const original = sanitizeForSpell(getEditorText());
 
   // 적용할 항목 수집
@@ -391,38 +391,50 @@ function applySpellFixes(){
   });
   if(!picks.length){ closeSpellUI(); return; }
 
-  // 공백 보정에 쓸 간단 유틸
-  const isKor = c => /[가-힣]/.test(c||'');
+  // 유틸
+  const isKor   = c => /[가-힣]/.test(c||'');
   const isSpace = c => /\s/.test(c||'');
-  const isPunct = c => /[.,!?;:)\]\}»”’]/.test(c||'');
+  const isPunct = c => /[.,!?;:…()\[\]{}“”"‘’'·‧、，。]/.test(c||''); // 쉼표/마침표 등
   const needsSpaceBetween = (leftEnd, rightStart) =>
         isKor(leftEnd) && isKor(rightStart) && !isSpace(rightStart) && !isPunct(rightStart);
 
-  // 뒤에서부터 치환 (인덱스 보호)
+  // 뒤에서부터 치환
   picks.sort((a,b)=>a.offset-b.offset);
   let out = original;
+
   for(let k=picks.length-1;k>=0;k--){
     const p = picks[k];
 
     const prefix = out.slice(0, p.offset);
+    const segOri = out.slice(p.offset, p.offset + p.length);
     const suffix = out.slice(p.offset + p.length);
 
     let rep = p.replacement;
 
-    // --- [앞쪽] 붙음 보정 (…한글 + 한글rep) ---
-    const prev = prefix.slice(-1);
-    if (needsSpaceBetween(prev, rep[0])) {
-      rep = ' ' + rep;
+    // 1) 문장부호 보존: 원 구간의 선행/후행 문장부호를 대체어에 살려 붙이기
+    const leadP = (segOri.match(/^[.,!?;:…()\[\]{}“”"‘’'·‧、，。]+/) || [''])[0];
+    const tailP = (segOri.match(/[.,!?;:…()\[\]{}“”"‘’'·‧、，。]+$/) || [''])[0];
+
+    if (leadP && !rep.startsWith(leadP)) rep = leadP + rep;
+
+    // 끝쪽은 보통 단어와 붙여야 하므로, rep 끝 공백은 잠시 제거 후 문장부호 부착
+    if (tailP && !rep.endsWith(tailP)) {
+      rep = rep.replace(/\s+$/,'') + tailP;
     }
+
+    // 2) [앞쪽] 붙음 보정: (…한글 + 한글rep) → 한 칸
+    const prev = prefix.slice(-1);
+    if (needsSpaceBetween(prev, rep[0])) rep = ' ' + rep;
 
     // 기본 치환
     out = prefix + rep + suffix;
 
-    // --- [뒤쪽] 붙음 보정 (rep끝한글 + 다음한글) ---
-    const after = out.charAt(p.offset + rep.length);
+    // 3) [뒤쪽] 붙음 보정: (rep끝한글 + 다음한글) → 한 칸
+    const repEndIndex = p.offset + rep.length;
+    const after = out.charAt(repEndIndex);
     const lastRepChar = rep.slice(-1);
     if (needsSpaceBetween(lastRepChar, after)) {
-      out = out.slice(0, p.offset + rep.length) + ' ' + out.slice(p.offset + rep.length);
+      out = out.slice(0, repEndIndex) + ' ' + out.slice(repEndIndex);
     }
   }
 
