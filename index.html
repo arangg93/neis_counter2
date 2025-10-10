@@ -375,7 +375,10 @@ async function doSpellCheck(){
 }
 
 function applySpellFixes(){
-  const text = sanitizeForSpell(getEditorText());
+  // 검사·치환 기준이 된 원문 (줄바꿈/태그 정리본)
+  const original = sanitizeForSpell(getEditorText());
+
+  // 적용할 항목 수집
   const picks = [];
   document.querySelectorAll('.sp-apply').forEach(cb=>{
     if(!cb.checked) return;
@@ -387,12 +390,42 @@ function applySpellFixes(){
     picks.push({offset:m.offset, length:m.length, replacement:rep});
   });
   if(!picks.length){ closeSpellUI(); return; }
+
+  // 공백 보정에 쓸 간단 유틸
+  const isKor = c => /[가-힣]/.test(c||'');
+  const isSpace = c => /\s/.test(c||'');
+  const isPunct = c => /[.,!?;:)\]\}»”’]/.test(c||'');
+  const needsSpaceBetween = (leftEnd, rightStart) =>
+        isKor(leftEnd) && isKor(rightStart) && !isSpace(rightStart) && !isPunct(rightStart);
+
+  // 뒤에서부터 치환 (인덱스 보호)
   picks.sort((a,b)=>a.offset-b.offset);
-  let out = text;
+  let out = original;
   for(let k=picks.length-1;k>=0;k--){
     const p = picks[k];
-    out = out.slice(0,p.offset) + p.replacement + out.slice(p.offset+p.length);
+
+    const prefix = out.slice(0, p.offset);
+    const suffix = out.slice(p.offset + p.length);
+
+    let rep = p.replacement;
+
+    // --- [앞쪽] 붙음 보정 (…한글 + 한글rep) ---
+    const prev = prefix.slice(-1);
+    if (needsSpaceBetween(prev, rep[0])) {
+      rep = ' ' + rep;
+    }
+
+    // 기본 치환
+    out = prefix + rep + suffix;
+
+    // --- [뒤쪽] 붙음 보정 (rep끝한글 + 다음한글) ---
+    const after = out.charAt(p.offset + rep.length);
+    const lastRepChar = rep.slice(-1);
+    if (needsSpaceBetween(lastRepChar, after)) {
+      out = out.slice(0, p.offset + rep.length) + ' ' + out.slice(p.offset + rep.length);
+    }
   }
+
   setEditorText(out);
   closeSpellUI();
   calc();
