@@ -51,11 +51,6 @@
   #remain{color:var(--accent)}
   footer{color:var(--muted); text-align:center; padding:12px 8px; font-size:var(--base)}
   .tips-plain{margin:10px 0 8px}
-  @media (max-width:900px){
-    .row{grid-template-columns:1fr}
-    .grid{grid-template-columns:1fr}
-    .info-grid{grid-template-columns:1fr 1fr}
-  }
 
   /* 맞춤법 결과 인라인 패널 */
   .sp-hd{padding:6px 4px 8px; display:flex; gap:12px; justify-content:space-between; align-items:center}
@@ -67,6 +62,17 @@
   .sp-ctx{color:#111827; font-family:ui-monospace,Consolas,Menlo,monospace}
   .sp-ctx mark{background:#fff59d; padding:0 2px}
   .hidden{display:none}
+
+  dialog{ border:1px solid var(--border); border-radius:14px; padding:0; }
+  .dlg-hd{padding:10px 12px; border-bottom:1px solid var(--border); font-weight:900}
+  .dlg-bd{padding:10px 12px}
+  .dlg-ft{padding:10px 12px; border-top:1px solid var(--border); display:flex; gap:8px; justify-content:flex-end}
+
+  @media (max-width:900px){
+    .row{grid-template-columns:1fr}
+    .grid{grid-template-columns:1fr}
+    .info-grid{grid-template-columns:1fr 1fr}
+  }
 </style>
 </head>
 <body>
@@ -128,15 +134,16 @@
         <button class="btn" id="btnClear">지우기</button>
         <button class="btn" id="btnCopy">복사</button>
         <button class="btn" id="btnPaste">붙여넣기</button>
+        <!-- 순서 교체: 진단 → 맞춤법 확인 -->
+        <button class="btn" id="btnDiag">진단</button>
         <button class="btn" id="btnSpell">맞춤법 확인</button>
-        <button class="btn" id="btnSpellPing">진단</button>
       </div>
       <textarea id="box" placeholder="여기에 붙여 넣으세요."></textarea>
       <div class="hint">* 오른쪽 아래 모서리를 드래그하면 칸 크기를 조절할 수 있습니다.</div>
-      <div class="hint">* [맞춤법 확인]을 누르면 <strong>맞춤법 프록시(Cloudflare Worker)</strong>로 텍스트가 전송됩니다.</div>
+      <div class="hint">* [맞춤법 확인]을 누르면 맞춤법 프록시(Cloudflare Worker)로 텍스트가 전송됩니다.</div>
     </div>
 
-    <!-- 맞춤법 결과 (인라인 패널, 팝업 X) -->
+    <!-- 맞춤법 결과 (인라인 패널) -->
     <div id="spellCard" class="card hidden">
       <div class="sp-hd">
         <div style="font-weight:900">맞춤법/문법 검사 결과</div>
@@ -171,6 +178,36 @@
     <footer>© 2025 NEIS Counter · Made with <strong>상우고등학교 교사 김경호t</strong></footer>
   </div>
 
+  <!-- 설정 다이얼로그 -->
+  <dialog id="dlg" style="max-width:520px; width:95%;">
+    <div class="dlg-hd">설정</div>
+    <div class="dlg-bd">
+      <div style="margin-bottom:10px">
+        <label><strong>기본 글자 크기</strong> (<span id="fsVal">15</span>px)</label>
+        <input id="fsRange" type="range" min="12" max="24" step="1" value="15" style="width:100%" />
+      </div>
+      <div>
+        <label><strong>에디터 줄 간격</strong> (<span id="lhVal">1.6</span>)</label>
+        <input id="lhRange" type="range" min="1.2" max="2.2" step="0.05" value="1.6" style="width:100%" />
+      </div>
+    </div>
+    <div class="dlg-ft">
+      <button class="btn" id="dlgClose">닫기</button>
+    </div>
+  </dialog>
+
+  <!-- 진단 다이얼로그 -->
+  <dialog id="diag" style="max-width:560px; width:95%;">
+    <div class="dlg-hd">진단</div>
+    <div class="dlg-bd" id="diagBody" style="line-height:1.7">
+      <!-- 내용은 스크립트에서 채움 -->
+    </div>
+    <div class="dlg-ft">
+      <button class="btn" id="btnDiagCopy">복사</button>
+      <button class="btn" id="btnDiagClose">닫기</button>
+    </div>
+  </dialog>
+
 <script>
 /* ===== DOM ===== */
 const box      = document.getElementById('box');
@@ -192,13 +229,12 @@ const chkAll    = document.getElementById('chkAll');
 /*** 본인 워커 주소 ***/
 const SPELL_API = 'https://neis-spell.arang93.workers.dev/check';
 
-/* ===== 안전한 에디터 접근(확장프로그램 우회) ===== */
+/* ===== 안전한 에디터 접근 ===== */
 function getEditorEl() { return document.getElementById('box'); }
 function getEditorText() {
   const el = getEditorEl();
   if (!el) return '';
   if (el.tagName === 'TEXTAREA') return el.value ?? '';
-  // 확장프로그램이 DIV(contenteditable)로 바꿨을 때
   return (el.innerText || el.textContent || '');
 }
 function setEditorText(s) {
@@ -209,14 +245,15 @@ function setEditorText(s) {
 }
 function sanitizeForSpell(s) {
   return String(s)
-    .replace(/\r\n?/g, '\n')                 // 개행 정규화
-    .replace(/<br\s*\/?>/gi, '\n')           // BR → 개행
-    .replace(/<\/div>/gi, '\n')              // DIV 닫힘 → 개행
-    .replace(/<[^>]+>/g, '')                 // 나머지 태그 제거
-    .replace(/[\u200B\u200C\u200D\uFEFF]/g,''); // 제로폭 문자 제거
+    .replace(/\r\n?/g, '\n')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/div>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/[\u200B\u200C\u200D\uFEFF]/g,'');
 }
 
 /* ===== 바이트 계산 ===== */
+let lastStats = {nos:0, ws:0, bytes:0, lim:1500, left:1500, pct:0, status:'정상'};
 function isHangul(ch){ return /[가-힣ㄱ-ㅎㅏ-ㅣ]/.test(ch); }
 function neisBytes(s){
   let n=0;
@@ -229,7 +266,7 @@ function neisBytes(s){
   return n;
 }
 function calc(){
-  const t = getEditorText();                 // 여기서도 항상 안전 경로 사용
+  const t = getEditorText();
   const nos = t.replace(/\s/g,'').length;
   const ws  = t.length;
   const bytes = neisBytes(t);
@@ -243,26 +280,45 @@ function calc(){
   bar.style.width = pct + '%';
 
   const left = Math.max(0, lim - bytes);
-  remain.textContent = left;
 
-  if(bytes>lim){
-    warn.textContent = `⚠ 한도 초과: ${bytes-lim} Bytes 초과했습니다.`;
-    warn.classList.add('big'); warn.style.color = 'var(--bad)';
-  }else if(bytes>Math.max(200, lim*0.9)){
-    warn.textContent = `주의: 한도 임박 (${pct}% 사용)`;
-    warn.classList.remove('big'); warn.style.color = 'var(--warn)';
+  let status = '정상';
+  if(bytes>lim){ status='초과'; }
+  else if(bytes>Math.max(200, lim*0.9)){ status='임박'; }
+
+  remain.textContent = left;
+  if(status==='초과'){
+    warn.textContent = `⚠ 한도 초과: ${bytes-lim} Bytes 초과했습니다.`; warn.classList.add('big'); warn.style.color='var(--bad)';
+  }else if(status==='임박'){
+    warn.textContent = `주의: 한도 임박 (${pct}% 사용)`; warn.classList.remove('big'); warn.style.color='var(--warn)';
   }else{
     warn.textContent=''; warn.classList.remove('big'); warn.style.color='var(--muted)';
   }
+
+  lastStats = {nos, ws, bytes, lim, left, pct, status};
 
   localStorage.setItem('neis_text', t);
   localStorage.setItem('neis_limit', lim);
 }
 
+/* ===== 메시지 보정(긴 예시/태그 제거, 첫 문장만) ===== */
+function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+function cleanRuleMessage(html){
+  let t = String(html || '');
+  t = t.replace(/<br\s*\/?>/gi, '\n')
+       .replace(/<\/?[^>]+>/g, '')
+       .replace(/&nbsp;/gi,' ')
+       .replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&')
+       .replace(/&quot;/g,'"').replace(/&#39;/g,"'");
+  t = t.split(/\n{2,}/)[0];
+  t = t.split(/(?:^|\s)[(（]?예\d?[\)）]/)[0];
+  t = t.trim();
+  if (t.length > 80) t = t.slice(0, 80) + '…';
+  return t;
+}
+
 /* ===== 맞춤법 UI ===== */
 function openSpellUI(){ spellBody.textContent = '검사 중...'; spellCard.classList.remove('hidden'); }
 function closeSpellUI(){ spellCard.classList.add('hidden'); }
-function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
 function setSpellContent(html){ spellBody.innerHTML = html; }
 
 function renderSpellResult(text, matches){
@@ -277,11 +333,12 @@ function renderSpellResult(text, matches){
     const selectOptions = (opts.length
       ? opts.map(r=>`<option value="${escapeHtml(r.value)}">${escapeHtml(r.value)}</option>`).join('')
       : `<option value="${mid}">${mid} (변경 안 함)</option>`);
+    const msg = cleanRuleMessage(m.message || '수정 제안');
     return `
       <div class="sp-item">
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
           <label><input type="checkbox" class="sp-apply" data-i="${i}" checked> 적용</label>
-          <span class="sp-msg">${escapeHtml(m.message||'수정 제안')}</span>
+          <span class="sp-msg">${escapeHtml(msg)}</span>
         </div>
         <div class="sp-ctx"><span>${left}</span><mark>${mid}</mark><span>${right}</span></div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px">
@@ -292,7 +349,6 @@ function renderSpellResult(text, matches){
       </div>`;
   }).join('');
   setSpellContent(parts);
-  // 전체선택 토글
   chkAll.checked = true;
   chkAll.onchange = ()=>{ document.querySelectorAll('.sp-apply').forEach(cb=> cb.checked = chkAll.checked); };
 }
@@ -300,7 +356,6 @@ function renderSpellResult(text, matches){
 async function doSpellCheck(){
   let raw = getEditorText();
   if(!raw.trim()){ alert('검사할 내용이 없습니다.'); return; }
-  // 확장프로그램이 끼워 넣은 마크업/제로폭문자 제거
   const text = sanitizeForSpell(raw);
   openSpellUI();
   try{
@@ -343,9 +398,52 @@ function applySpellFixes(){
   calc();
 }
 
+/* ===== 설정 다이얼로그 ===== */
+const dlg = document.getElementById('dlg');
+document.getElementById('btnSettings').addEventListener('click', ()=> dlg.showModal());
+document.getElementById('dlgClose').addEventListener('click', ()=> dlg.close());
+const fsRange = document.getElementById('fsRange');
+const fsVal   = document.getElementById('fsVal');
+fsRange.addEventListener('input', ()=>{
+  fsVal.textContent = fsRange.value;
+  document.documentElement.style.setProperty('--base', fsRange.value+'px');
+  localStorage.setItem('neis_base', fsRange.value);
+});
+const lhRange = document.getElementById('lhRange');
+const lhVal   = document.getElementById('lhVal');
+lhRange.addEventListener('input', ()=>{
+  lhVal.textContent = lhRange.value;
+  box.style.lineHeight = lhRange.value;
+  localStorage.setItem('neis_lh', lhRange.value);
+});
+
+/* ===== 진단 다이얼로그 ===== */
+const diag = document.getElementById('diag');
+const diagBody = document.getElementById('diagBody');
+document.getElementById('btnDiag').addEventListener('click', ()=>{
+  // 최신 계산 반영
+  calc();
+  const t = getEditorText();
+  const lines = [
+    `공백 제외 글자수: ${lastStats.nos}자`,
+    `공백 포함 글자수: ${lastStats.ws}자`,
+    `전체 바이트: ${lastStats.bytes} Bytes`,
+    `바이트 한도: ${lastStats.lim} Bytes`,
+    `남은 용량: ${lastStats.left} Bytes`,
+    `사용률: ${lastStats.pct}%`,
+    `상태: ${lastStats.status === '정상' ? '정상' : (lastStats.status==='임박' ? '임박' : '초과')}`
+  ];
+  diagBody.innerHTML = `<div class="mono" style="white-space:pre-wrap">${lines.join('\n')}</div>`;
+  diag.showModal();
+});
+document.getElementById('btnDiagClose').addEventListener('click', ()=> diag.close());
+document.getElementById('btnDiagCopy').addEventListener('click', async ()=>{
+  const text = diagBody.innerText || '';
+  try{ await navigator.clipboard.writeText(text); }catch(e){}
+});
+
 /* ===== 이벤트 ===== */
 box.addEventListener('input', calc);
-// 확장프로그램이 DIV로 바꿔도 반응하도록 보조 이벤트
 document.addEventListener('keyup',  e => { if (e.target.id === 'box') calc(); });
 document.addEventListener('paste',  e => { if (e.target.id === 'box') setTimeout(calc, 0); });
 
@@ -383,8 +481,12 @@ document.getElementById('btnApply').addEventListener('click', applySpellFixes);
 (function restore(){
   const t = localStorage.getItem('neis_text');
   const l = localStorage.getItem('neis_limit');
+  const base = localStorage.getItem('neis_base');
+  const lh = localStorage.getItem('neis_lh');
   if(t!==null) setEditorText(t);
   if(l!==null) limit.value = +l;
+  if(base) document.documentElement.style.setProperty('--base', base+'px'), fsRange.value = base, fsVal.textContent=base;
+  if(lh) box.style.lineHeight = lh, lhRange.value = lh, lhVal.textContent = lh;
   calc();
 })();
 </script>
