@@ -358,19 +358,47 @@ async function doSpellCheck(){
   if(!raw.trim()){ alert('검사할 내용이 없습니다.'); return; }
   const text = sanitizeForSpell(raw);
   openSpellUI();
+
   try{
     const res = await fetch(SPELL_API, {
       method:'POST',
       headers:{'content-type':'application/json'},
       body: JSON.stringify({ text })
     });
-    if(!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    ltMatches = Array.isArray(data.matches) ? data.matches : [];
-    renderSpellResult(text, ltMatches);
+
+    // JSON 우선 파싱 시도
+    let data = null;
+    try {
+      const ct = (res.headers.get('content-type')||'').toLowerCase();
+      if (ct.includes('application/json')) data = await res.json();
+      else {
+        const bodyText = await res.text();
+        try { data = JSON.parse(bodyText); } catch { /* 무시 */ }
+      }
+    } catch { /* 무시 */ }
+
+    // 정상 + matches 배열이면 그대로 렌더
+    if (res.ok && data && Array.isArray(data.matches)) {
+      ltMatches = data.matches;
+      renderSpellResult(text, ltMatches);
+      return;
+    }
+
+    // 👇 워커가 "수정할 항목 없음"을 204/404/422/500 등으로 줄 때를 성공으로 처리
+    const SOFT_OK = [204,404,422,500];
+    if (SOFT_OK.includes(res.status) || (data && Array.isArray(data.matches) && data.matches.length===0)) {
+      ltMatches = [];
+      spellBody.innerHTML = '<div>맞춤법 검사가 완료되었습니다. 수정할 항목이 없습니다. 🎉</div>';
+      return;
+    }
+
+    // 그 외는 에러로 표시
+    throw new Error(`HTTP ${res.status || '??'}`);
+
   }catch(err){
-    console.error(err);
-    setSpellContent(`<div style="color:#b91c1c">맞춤법 서버에 연결할 수 없습니다.<br><small>${String(err)}</small></div>`);
+    // 진짜 네트워크/서버 오류
+    spellBody.innerHTML =
+      `<div style="color:#b91c1c">맞춤법 서버에 연결할 수 없습니다.<br><small>${escapeHtml(String(err))}</small></div>`;
   }
 }
 
