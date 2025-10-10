@@ -139,14 +139,14 @@
         <button class="btn" id="btnSpell">맞춤법 확인</button>
       </div>
       <textarea id="box" placeholder="여기에 붙여 넣으세요."></textarea>
-      <div class="hint">* 오른쪽 아래 모서리를 드래그하면 칸 크기를 조절할 수 있습니다.</div>
-      <div class="hint">* [맞춤법 확인]을 누르면 맞춤법 프록시(Cloudflare Worker)로 텍스트가 전송됩니다.</div>
+      <div class="hint">* 칸 모서리 드래그 -> 아래로 크기 조정 가능, [설정] 글자 크기, [진단] 전체 상황 알림.</div>
+      <div class="hint">* [맞춤법 확인] 클릭 시 -> 바른한글(구 부산대) 한국어 맞춤법 검사기 작동!!</div>
     </div>
 
     <!-- 맞춤법 결과 (인라인 패널) -->
     <div id="spellCard" class="card hidden">
       <div class="sp-hd">
-        <div style="font-weight:900">맞춤법/문법 검사 결과</div>
+        <div style="font-weight:900">맞춤법/문법 검사 결과(선택하여 수정할 것.)</div>
         <div style="display:flex;gap:10px;align-items:center">
           <label style="font-weight:600"><input type="checkbox" id="chkAll" checked style="margin-right:6px">전체 선택</label>
           <button class="btn" id="btnSpellClose">닫기</button>
