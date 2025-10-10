@@ -292,7 +292,7 @@ async function doSpellCheck(){
 
   // 타임아웃(12초)
   const controller = new AbortController();
-  const timer = setTimeout(()=>controller.abort('timeout'), 12000);
+  const timer = setTimeout(()=>controller.abort('timeout'), 25000);
 
   try{
     const res = await fetch(SPELL_API, {
