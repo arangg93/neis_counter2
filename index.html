@@ -117,14 +117,12 @@
       <div id="warn" class="hint"></div>
     </div>
 
-    <!-- 항목/바이트 안내 -->
+    <!-- ✳️ 통계 (위로 올림) -->
     <div class="card">
-      <div class="info-grid">
-        <div class="ibox"><b>자율활동</b> : 1500B</div>
-        <div class="ibox"><b>동아리활동</b> : 1500B</div>
-        <div class="ibox"><b>진로활동</b> : 2100B</div>
-        <div class="ibox"><b>교과세특</b> : 1500B</div>
-        <div class="ibox"><b>개인별세특</b> : 1500B</div>
+      <div class="grid">
+        <div class="stat"><h3>공백 제외 글자수 <span class="inline" id="noSpaceChars">: 0자</span></h3></div>
+        <div class="stat"><h3>공백 포함 글자수 <span class="inline" id="withSpaceChars">: 0자</span></h3></div>
+        <div class="stat"><h3 id="bytesLine">전체 바이트 : <span class="inline" id="bytesVal">0</span>바이트</h3></div>
       </div>
     </div>
 
@@ -134,7 +132,7 @@
         <button class="btn" id="btnClear">지우기</button>
         <button class="btn" id="btnCopy">복사</button>
         <button class="btn" id="btnPaste">붙여넣기</button>
-        <!-- 순서 교체: 진단 → 맞춤법 확인 -->
+        <!-- 요청: 진단 ↔ 맞춤법 버튼 순서 교체 -->
         <button class="btn" id="btnDiag">진단</button>
         <button class="btn" id="btnSpell">맞춤법 확인</button>
       </div>
@@ -158,12 +156,14 @@
       </div>
     </div>
 
-    <!-- 통계 -->
+    <!-- ✳️ 항목/바이트 안내 (아래로 내림) -->
     <div class="card">
-      <div class="grid">
-        <div class="stat"><h3>공백 제외 글자수 <span class="inline" id="noSpaceChars">: 0자</span></h3></div>
-        <div class="stat"><h3>공백 포함 글자수 <span class="inline" id="withSpaceChars">: 0자</span></h3></div>
-        <div class="stat"><h3 id="bytesLine">전체 바이트 : <span class="inline" id="bytesVal">0</span>바이트</h3></div>
+      <div class="info-grid">
+        <div class="ibox"><b>자율활동</b> : 1500B</div>
+        <div class="ibox"><b>동아리활동</b> : 1500B</div>
+        <div class="ibox"><b>진로활동</b> : 2100B</div>
+        <div class="ibox"><b>교과세특</b> : 1500B</div>
+        <div class="ibox"><b>개인별세특</b> : 1500B</div>
       </div>
     </div>
 
@@ -199,9 +199,7 @@
   <!-- 진단 다이얼로그 -->
   <dialog id="diag" style="max-width:560px; width:95%;">
     <div class="dlg-hd">진단</div>
-    <div class="dlg-bd" id="diagBody" style="line-height:1.7">
-      <!-- 내용은 스크립트에서 채움 -->
-    </div>
+    <div class="dlg-bd" id="diagBody" style="line-height:1.7"></div>
     <div class="dlg-ft">
       <button class="btn" id="btnDiagCopy">복사</button>
       <button class="btn" id="btnDiagClose">닫기</button>
@@ -300,7 +298,7 @@ function calc(){
   localStorage.setItem('neis_limit', lim);
 }
 
-/* ===== 메시지 보정(긴 예시/태그 제거, 첫 문장만) ===== */
+/* ===== 메시지 보정 ===== */
 function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
 function cleanRuleMessage(html){
   let t = String(html || '');
@@ -366,25 +364,22 @@ async function doSpellCheck(){
       body: JSON.stringify({ text })
     });
 
-    // JSON 우선 파싱 시도
     let data = null;
     try {
       const ct = (res.headers.get('content-type')||'').toLowerCase();
       if (ct.includes('application/json')) data = await res.json();
       else {
         const bodyText = await res.text();
-        try { data = JSON.parse(bodyText); } catch { /* 무시 */ }
+        try { data = JSON.parse(bodyText); } catch {}
       }
-    } catch { /* 무시 */ }
+    } catch {}
 
-    // 정상 + matches 배열이면 그대로 렌더
     if (res.ok && data && Array.isArray(data.matches)) {
       ltMatches = data.matches;
       renderSpellResult(text, ltMatches);
       return;
     }
 
-    // 👇 워커가 "수정할 항목 없음"을 204/404/422/500 등으로 줄 때를 성공으로 처리
     const SOFT_OK = [204,404,422,500];
     if (SOFT_OK.includes(res.status) || (data && Array.isArray(data.matches) && data.matches.length===0)) {
       ltMatches = [];
@@ -392,21 +387,16 @@ async function doSpellCheck(){
       return;
     }
 
-    // 그 외는 에러로 표시
     throw new Error(`HTTP ${res.status || '??'}`);
 
   }catch(err){
-    // 진짜 네트워크/서버 오류
     spellBody.innerHTML =
       `<div style="color:#b91c1c">맞춤법 서버에 연결할 수 없습니다.<br><small>${escapeHtml(String(err))}</small></div>`;
   }
 }
 
 function applySpellFixes(){
-  // 검사 기준이 된 정리본
   const original = sanitizeForSpell(getEditorText());
-
-  // 적용할 항목 수집
   const picks = [];
   document.querySelectorAll('.sp-apply').forEach(cb=>{
     if(!cb.checked) return;
@@ -419,14 +409,12 @@ function applySpellFixes(){
   });
   if(!picks.length){ closeSpellUI(); return; }
 
-  // 유틸
   const isKor   = c => /[가-힣]/.test(c||'');
   const isSpace = c => /\s/.test(c||'');
-  const isPunct = c => /[.,!?;:…()\[\]{}“”"‘’'·‧、，。]/.test(c||''); // 쉼표/마침표 등
+  const isPunct = c => /[.,!?;:…()\[\]{}“”"‘’'·‧、，。]/.test(c||'');
   const needsSpaceBetween = (leftEnd, rightStart) =>
         isKor(leftEnd) && isKor(rightStart) && !isSpace(rightStart) && !isPunct(rightStart);
 
-  // 뒤에서부터 치환
   picks.sort((a,b)=>a.offset-b.offset);
   let out = original;
 
@@ -439,25 +427,17 @@ function applySpellFixes(){
 
     let rep = p.replacement;
 
-    // 1) 문장부호 보존: 원 구간의 선행/후행 문장부호를 대체어에 살려 붙이기
     const leadP = (segOri.match(/^[.,!?;:…()\[\]{}“”"‘’'·‧、，。]+/) || [''])[0];
     const tailP = (segOri.match(/[.,!?;:…()\[\]{}“”"‘’'·‧、，。]+$/) || [''])[0];
 
     if (leadP && !rep.startsWith(leadP)) rep = leadP + rep;
+    if (tailP && !rep.endsWith(tailP)) rep = rep.replace(/\s+$/,'') + tailP;
 
-    // 끝쪽은 보통 단어와 붙여야 하므로, rep 끝 공백은 잠시 제거 후 문장부호 부착
-    if (tailP && !rep.endsWith(tailP)) {
-      rep = rep.replace(/\s+$/,'') + tailP;
-    }
-
-    // 2) [앞쪽] 붙음 보정: (…한글 + 한글rep) → 한 칸
     const prev = prefix.slice(-1);
     if (needsSpaceBetween(prev, rep[0])) rep = ' ' + rep;
 
-    // 기본 치환
     out = prefix + rep + suffix;
 
-    // 3) [뒤쪽] 붙음 보정: (rep끝한글 + 다음한글) → 한 칸
     const repEndIndex = p.offset + rep.length;
     const after = out.charAt(repEndIndex);
     const lastRepChar = rep.slice(-1);
@@ -494,7 +474,6 @@ lhRange.addEventListener('input', ()=>{
 const diag = document.getElementById('diag');
 const diagBody = document.getElementById('diagBody');
 document.getElementById('btnDiag').addEventListener('click', ()=>{
-  // 최신 계산 반영
   calc();
   const t = getEditorText();
   const lines = [
