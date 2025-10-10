@@ -172,27 +172,51 @@
   </div>
 
 <script>
-/* ===== 기본 요소 ===== */
-const box = document.getElementById('box');
+/* ===== DOM ===== */
+const box      = document.getElementById('box');
 const noSpaceChars = document.getElementById('noSpaceChars');
 const withSpaceChars = document.getElementById('withSpaceChars');
 const bytesVal = document.getElementById('bytesVal');
-const preset = document.getElementById('preset');
-const limit = document.getElementById('limit');
-const remain = document.getElementById('remain');
-const bar = document.getElementById('bar');
-const warn = document.getElementById('warn');
+const preset   = document.getElementById('preset');
+const limit    = document.getElementById('limit');
+const remain   = document.getElementById('remain');
+const bar      = document.getElementById('bar');
+const warn     = document.getElementById('warn');
 
-/* ===== 맞춤법 전역 ===== */
+/* ===== 맞춤법 패널 ===== */
 let ltMatches = [];
 const spellCard = document.getElementById('spellCard');
 const spellBody = document.getElementById('spellBody');
-const chkAll = document.getElementById('chkAll');
+const chkAll    = document.getElementById('chkAll');
 
-/*** 맞춤법 API 주소(본인 Worker 주소) ***/
+/*** 본인 워커 주소 ***/
 const SPELL_API = 'https://neis-spell.arang93.workers.dev/check';
 
-/* ===== 유틸 ===== */
+/* ===== 안전한 에디터 접근(확장프로그램 우회) ===== */
+function getEditorEl() { return document.getElementById('box'); }
+function getEditorText() {
+  const el = getEditorEl();
+  if (!el) return '';
+  if (el.tagName === 'TEXTAREA') return el.value ?? '';
+  // 확장프로그램이 DIV(contenteditable)로 바꿨을 때
+  return (el.innerText || el.textContent || '');
+}
+function setEditorText(s) {
+  const el = getEditorEl();
+  if (!el) return;
+  if (el.tagName === 'TEXTAREA') el.value = s;
+  else el.innerText = s;
+}
+function sanitizeForSpell(s) {
+  return String(s)
+    .replace(/\r\n?/g, '\n')                 // 개행 정규화
+    .replace(/<br\s*\/?>/gi, '\n')           // BR → 개행
+    .replace(/<\/div>/gi, '\n')              // DIV 닫힘 → 개행
+    .replace(/<[^>]+>/g, '')                 // 나머지 태그 제거
+    .replace(/[\u200B\u200C\u200D\uFEFF]/g,''); // 제로폭 문자 제거
+}
+
+/* ===== 바이트 계산 ===== */
 function isHangul(ch){ return /[가-힣ㄱ-ㅎㅏ-ㅣ]/.test(ch); }
 function neisBytes(s){
   let n=0;
@@ -204,18 +228,15 @@ function neisBytes(s){
   }
   return n;
 }
-function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
-
-/* ===== 계산 ===== */
 function calc(){
-  const t = box.value;
+  const t = getEditorText();                 // 여기서도 항상 안전 경로 사용
   const nos = t.replace(/\s/g,'').length;
   const ws  = t.length;
   const bytes = neisBytes(t);
 
   noSpaceChars.textContent   = ': ' + nos + '자';
   withSpaceChars.textContent = ': ' + ws  + '자';
-  bytesVal.textContent       = bytes.toString();
+  bytesVal.textContent       = String(bytes);
 
   const lim = Number(limit.value||0);
   const pct = Math.min(100, Math.round(bytes/Math.max(lim,1)*100));
@@ -239,20 +260,13 @@ function calc(){
 }
 
 /* ===== 맞춤법 UI ===== */
-function openSpellUI(){
-  spellBody.textContent = '검사 중...';
-  spellCard.classList.remove('hidden');
-  const y = spellCard.getBoundingClientRect().top + window.scrollY - 12;
-  window.scrollTo({top:y, behavior:'smooth'});
-}
+function openSpellUI(){ spellBody.textContent = '검사 중...'; spellCard.classList.remove('hidden'); }
 function closeSpellUI(){ spellCard.classList.add('hidden'); }
+function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
 function setSpellContent(html){ spellBody.innerHTML = html; }
 
 function renderSpellResult(text, matches){
-  if(!matches.length){
-    setSpellContent(`<div>오류가 발견되지 않았습니다. 🎉</div>`);
-    return;
-  }
+  if(!matches.length){ setSpellContent('<div>오류가 발견되지 않았습니다. 🎉</div>'); return; }
   const parts = matches.map((m,i)=>{
     const start = Math.max(0, m.offset-18);
     const end   = Math.min(text.length, m.offset+m.length+18);
@@ -278,67 +292,35 @@ function renderSpellResult(text, matches){
       </div>`;
   }).join('');
   setSpellContent(parts);
-
+  // 전체선택 토글
   chkAll.checked = true;
   chkAll.onchange = ()=>{ document.querySelectorAll('.sp-apply').forEach(cb=> cb.checked = chkAll.checked); };
 }
 
-/* ===== 맞춤법 검사(에러 본문까지 표시) ===== */
 async function doSpellCheck(){
-  const text = box.value;
-  if(!text.trim()){ alert('검사할 내용이 없습니다.'); return; }
+  let raw = getEditorText();
+  if(!raw.trim()){ alert('검사할 내용이 없습니다.'); return; }
+  // 확장프로그램이 끼워 넣은 마크업/제로폭문자 제거
+  const text = sanitizeForSpell(raw);
   openSpellUI();
-  setSpellContent('검사 중...');
-
-  // 타임아웃(12초)
-  const controller = new AbortController();
-  const timer = setTimeout(()=>controller.abort('timeout'), 25000);
-
   try{
     const res = await fetch(SPELL_API, {
       method:'POST',
       headers:{'content-type':'application/json'},
-      body: JSON.stringify({ text }),
-      cache:'no-store',
-      signal: controller.signal
+      body: JSON.stringify({ text })
     });
-    clearTimeout(timer);
-
-    if(res.ok){
-      const data = await res.json();
-      ltMatches = Array.isArray(data.matches) ? data.matches : [];
-      renderSpellResult(text, ltMatches);
-      return;
-    }
-
-    // 실패 시 서버가 보낸 본문을 표시
-    const ct = res.headers.get('content-type') || '';
-    let bodyText = '';
-    try{
-      if(ct.includes('application/json')){
-        const j = await res.json();
-        bodyText = j.error ? String(j.error) : JSON.stringify(j).slice(0,400);
-      }else{
-        bodyText = (await res.text()).slice(0,400);
-      }
-    }catch(e){ bodyText = String(e); }
-
-    setSpellContent(
-      `<div style="color:#b91c1c">맞춤법 서버에 연결할 수 없습니다.<br>
-       <small>Error: HTTP ${res.status}<br>${escapeHtml(bodyText)}</small></div>`
-    );
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    ltMatches = Array.isArray(data.matches) ? data.matches : [];
+    renderSpellResult(text, ltMatches);
   }catch(err){
-    clearTimeout(timer);
-    setSpellContent(
-      `<div style="color:#b91c1c">맞춤법 서버에 연결할 수 없습니다.<br>
-       <small>${escapeHtml(String(err))}</small></div>`
-    );
+    console.error(err);
+    setSpellContent(`<div style="color:#b91c1c">맞춤법 서버에 연결할 수 없습니다.<br><small>${String(err)}</small></div>`);
   }
 }
 
-/* 선택 적용 */
 function applySpellFixes(){
-  const text = box.value;
+  const text = sanitizeForSpell(getEditorText());
   const picks = [];
   document.querySelectorAll('.sp-apply').forEach(cb=>{
     if(!cb.checked) return;
@@ -356,25 +338,17 @@ function applySpellFixes(){
     const p = picks[k];
     out = out.slice(0,p.offset) + p.replacement + out.slice(p.offset+p.length);
   }
-  box.value = out;
+  setEditorText(out);
   closeSpellUI();
   calc();
 }
 
-/* ===== 진단(헬스체크) ===== */
-async function pingWorker(){
-  const health = SPELL_API.replace('/check','/health');
-  try{
-    const r = await fetch(health, { cache:'no-store' });
-    const t = await r.text();
-    alert(`HEALTH ${r.status}: ${t}`);
-  }catch(e){
-    alert('HEALTH 요청 실패: ' + e);
-  }
-}
-
 /* ===== 이벤트 ===== */
 box.addEventListener('input', calc);
+// 확장프로그램이 DIV로 바꿔도 반응하도록 보조 이벤트
+document.addEventListener('keyup',  e => { if (e.target.id === 'box') calc(); });
+document.addEventListener('paste',  e => { if (e.target.id === 'box') setTimeout(calc, 0); });
+
 preset.addEventListener('change', ()=>{
   const v = preset.value;
   if(v==='none') return;
@@ -384,30 +358,32 @@ preset.addEventListener('change', ()=>{
 });
 limit.addEventListener('input', calc);
 
-document.getElementById('btnClear').addEventListener('click', ()=>{ box.value=''; calc(); box.focus(); });
+document.getElementById('btnClear').addEventListener('click', ()=>{ setEditorText(''); calc(); getEditorEl().focus(); });
 document.getElementById('btnCopy').addEventListener('click', async function(){
-  try{ await navigator.clipboard.writeText(box.value); const b=this; b.textContent='복사됨'; setTimeout(()=>b.textContent='복사',900);}catch(e){}
+  try{ await navigator.clipboard.writeText(getEditorText()); const b=this; b.textContent='복사됨'; setTimeout(()=>b.textContent='복사',900);}catch(e){}
 });
 document.getElementById('btnPaste').addEventListener('click', async ()=>{
-  try{ const t=await navigator.clipboard.readText(); box.setRangeText(t, box.selectionStart, box.selectionEnd, 'end'); calc(); }catch(e){}
+  try{
+    const t=await navigator.clipboard.readText();
+    const el = getEditorEl();
+    if (el.tagName === 'TEXTAREA' && 'setRangeText' in el) {
+      el.setRangeText(t, el.selectionStart||el.value.length, el.selectionEnd||el.value.length, 'end');
+    } else {
+      setEditorText(getEditorText() + t);
+    }
+    calc();
+  }catch(e){}
 });
 
-// 맞춤법
 document.getElementById('btnSpell').addEventListener('click', doSpellCheck);
 document.getElementById('btnSpellClose').addEventListener('click', closeSpellUI);
 document.getElementById('btnApply').addEventListener('click', applySpellFixes);
-document.getElementById('btnSpellPing').addEventListener('click', pingWorker);
-
-/* ===== 설정 버튼(간단 안내) ===== */
-document.getElementById('btnSettings').addEventListener('click', ()=>{
-  alert('설정(글자 크기/줄간격)은 간단 모드입니다. 필요하면 이전 설정 다이얼로그 버전을 끼워 넣으세요.');
-});
 
 /* ===== 초기 복원 & 최초 계산 ===== */
 (function restore(){
   const t = localStorage.getItem('neis_text');
   const l = localStorage.getItem('neis_limit');
-  if(t!==null) box.value = t;
+  if(t!==null) setEditorText(t);
   if(l!==null) limit.value = +l;
   calc();
 })();
