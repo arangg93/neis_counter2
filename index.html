@@ -129,12 +129,11 @@
         <button class="btn" id="btnCopy">복사</button>
         <button class="btn" id="btnPaste">붙여넣기</button>
         <button class="btn" id="btnSpell">맞춤법 확인</button>
+        <button class="btn" id="btnSpellPing">진단</button>
       </div>
       <textarea id="box" placeholder="여기에 붙여 넣으세요."></textarea>
-      <div class="hint">* 오른쪽 아래 모서리를 드래그하면 칸 크기를 조절할 수 있습니다.
-      </div>
-      <div class="hint">* [맞춤법 확인]을 누르면 LanguageTool 서버로 텍스트가 전송됩니다.
-      </div>
+      <div class="hint">* 오른쪽 아래 모서리를 드래그하면 칸 크기를 조절할 수 있습니다.</div>
+      <div class="hint">* [맞춤법 확인]을 누르면 <strong>맞춤법 프록시(Cloudflare Worker)</strong>로 텍스트가 전송됩니다.</div>
     </div>
 
     <!-- 맞춤법 결과 (인라인 패널, 팝업 X) -->
@@ -190,7 +189,7 @@ const spellCard = document.getElementById('spellCard');
 const spellBody = document.getElementById('spellBody');
 const chkAll = document.getElementById('chkAll');
 
-/*** 설정: 여기만 본인 Worker 주소로 바꾸세요 ***/
+/*** 맞춤법 API 주소(본인 Worker 주소) ***/
 const SPELL_API = 'https://neis-spell.arang93.workers.dev/check';
 
 /* ===== 유틸 ===== */
@@ -239,40 +238,10 @@ function calc(){
   localStorage.setItem('neis_limit', lim);
 }
 
-/* ===== LanguageTool 견고한 호출기 (폴백+타임아웃) ===== */
-async function ltCheckWithFallback(text) {
-  const endpoints = [
-    'https://api.languagetool.org/v2/check',
-    'https://languagetool.org/api/v2/check',
-    'https://cors.isomorphic-git.org/https://api.languagetool.org/v2/check' // 최후의 보루
-  ];
-  const params = new URLSearchParams({ language:'ko-KR', text });
-  const headers = { 'Content-Type':'application/x-www-form-urlencoded' };
-  const timeoutMs = 8000;
-
-  for (const url of endpoints) {
-    const controller = new AbortController();
-    const t = setTimeout(()=>controller.abort('timeout'), timeoutMs);
-    try{
-      const res = await fetch(url, {
-        method:'POST', headers, body:params, signal:controller.signal,
-        cache:'no-store', mode:'cors'
-      });
-      clearTimeout(t);
-      if(!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
-      return await res.json();
-    }catch(e){
-      clearTimeout(t);
-      if (url === endpoints[endpoints.length-1]) throw e;
-    }
-  }
-}
-
 /* ===== 맞춤법 UI ===== */
 function openSpellUI(){
   spellBody.textContent = '검사 중...';
   spellCard.classList.remove('hidden');
-  // 에디터 바로 아래로 스크롤
   const y = spellCard.getBoundingClientRect().top + window.scrollY - 12;
   window.scrollTo({top:y, behavior:'smooth'});
 }
@@ -303,42 +272,71 @@ function renderSpellResult(text, matches){
         <div class="sp-ctx"><span>${left}</span><mark>${mid}</mark><span>${right}</span></div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px">
           <span>제안:</span>
-          <select class="sp-choice" data-i="${i}">
-            ${selectOptions}
-          </select>
+          <select class="sp-choice" data-i="${i}">${selectOptions}</select>
           <small style="color:#6b7280">규칙: ${escapeHtml((m.rule&&m.rule.description)||m.rule?.id||'알 수 없음')}</small>
         </div>
       </div>`;
   }).join('');
   setSpellContent(parts);
 
-  // 전체선택 체크박스 동기화
   chkAll.checked = true;
-  chkAll.onchange = ()=>{
-    document.querySelectorAll('.sp-apply').forEach(cb=> cb.checked = chkAll.checked);
-  };
+  chkAll.onchange = ()=>{ document.querySelectorAll('.sp-apply').forEach(cb=> cb.checked = chkAll.checked); };
 }
 
+/* ===== 맞춤법 검사(에러 본문까지 표시) ===== */
 async function doSpellCheck(){
   const text = box.value;
   if(!text.trim()){ alert('검사할 내용이 없습니다.'); return; }
   openSpellUI();
+  setSpellContent('검사 중...');
+
+  // 타임아웃(12초)
+  const controller = new AbortController();
+  const timer = setTimeout(()=>controller.abort('timeout'), 12000);
+
   try{
     const res = await fetch(SPELL_API, {
       method:'POST',
       headers:{'content-type':'application/json'},
-      body: JSON.stringify({ text })
+      body: JSON.stringify({ text }),
+      cache:'no-store',
+      signal: controller.signal
     });
-    if(!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    ltMatches = Array.isArray(data.matches) ? data.matches : [];
-    renderSpellResult(text, ltMatches);
+    clearTimeout(timer);
+
+    if(res.ok){
+      const data = await res.json();
+      ltMatches = Array.isArray(data.matches) ? data.matches : [];
+      renderSpellResult(text, ltMatches);
+      return;
+    }
+
+    // 실패 시 서버가 보낸 본문을 표시
+    const ct = res.headers.get('content-type') || '';
+    let bodyText = '';
+    try{
+      if(ct.includes('application/json')){
+        const j = await res.json();
+        bodyText = j.error ? String(j.error) : JSON.stringify(j).slice(0,400);
+      }else{
+        bodyText = (await res.text()).slice(0,400);
+      }
+    }catch(e){ bodyText = String(e); }
+
+    setSpellContent(
+      `<div style="color:#b91c1c">맞춤법 서버에 연결할 수 없습니다.<br>
+       <small>Error: HTTP ${res.status}<br>${escapeHtml(bodyText)}</small></div>`
+    );
   }catch(err){
-    console.error(err);
-    setSpellContent(`<div style="color:#b91c1c">맞춤법 서버에 연결할 수 없습니다.<br><small>${String(err)}</small></div>`);
+    clearTimeout(timer);
+    setSpellContent(
+      `<div style="color:#b91c1c">맞춤법 서버에 연결할 수 없습니다.<br>
+       <small>${escapeHtml(String(err))}</small></div>`
+    );
   }
 }
 
+/* 선택 적용 */
 function applySpellFixes(){
   const text = box.value;
   const picks = [];
@@ -363,9 +361,20 @@ function applySpellFixes(){
   calc();
 }
 
+/* ===== 진단(헬스체크) ===== */
+async function pingWorker(){
+  const health = SPELL_API.replace('/check','/health');
+  try{
+    const r = await fetch(health, { cache:'no-store' });
+    const t = await r.text();
+    alert(`HEALTH ${r.status}: ${t}`);
+  }catch(e){
+    alert('HEALTH 요청 실패: ' + e);
+  }
+}
+
 /* ===== 이벤트 ===== */
 box.addEventListener('input', calc);
-
 preset.addEventListener('change', ()=>{
   const v = preset.value;
   if(v==='none') return;
@@ -387,11 +396,11 @@ document.getElementById('btnPaste').addEventListener('click', async ()=>{
 document.getElementById('btnSpell').addEventListener('click', doSpellCheck);
 document.getElementById('btnSpellClose').addEventListener('click', closeSpellUI);
 document.getElementById('btnApply').addEventListener('click', applySpellFixes);
+document.getElementById('btnSpellPing').addEventListener('click', pingWorker);
 
-/* ===== 설정 다이얼로그(글꼴/줄간격) ===== */
-const dlg = document.getElementById('btnSettings'); // 버튼 자체를 클릭만 씀
+/* ===== 설정 버튼(간단 안내) ===== */
 document.getElementById('btnSettings').addEventListener('click', ()=>{
-  alert('설정(글자 크기/줄간격)은 현재 로컬 저장소 기능으로 제공되던 것을 유지하려면 이전 “설정 다이얼로그” 파일을 사용하세요.\n지금 버전은 팝업 최소화를 위해 기본값(글자 15px, 줄간격 1.6)로 고정입니다.');
+  alert('설정(글자 크기/줄간격)은 간단 모드입니다. 필요하면 이전 설정 다이얼로그 버전을 끼워 넣으세요.');
 });
 
 /* ===== 초기 복원 & 최초 계산 ===== */
