@@ -177,9 +177,7 @@
       </ul>
     </div>
 
-    <footer>© 2025 NEIS Counter · Made with <strong>상우고등학교 교사 김경호t</strong>
-    <div class="hint">방문자 수: <b id="visitCount">-</b></div>
-    </footer>
+    <footer>© 2025 NEIS Counter · Made with <strong>상우고등학교 교사 김경호t</strong><div class="hint">방문자 수: <b id="visitCount">-</b></div></footer>
   </div>
 
   <!-- 설정 다이얼로그 -->
@@ -546,30 +544,44 @@ document.getElementById('btnApply').addEventListener('click', applySpellFixes);
   calc();
 })();
 
-   // 네임스페이스/키는 본인 식별용으로 임의 문자열이면 됩니다.
-  const COUNTER_NS = 'arangg93-neis-counter2';
-  const COUNTER_KEY = 'visits';
+(function () {
+  const NS  = 'arangg93-neis-counter2';  // 네임스페이스(임의 문자열 가능)
+  const KEY = 'visits';
 
-  async function updateVisitCounter(){
+  function setCount(v) {
     const el = document.getElementById('visitCount');
-    if (!el) return;
-    // 같은 브라우저에서 하루에 1번만 카운트(중복 새로고침 방지)
-    const today = new Date().toISOString().slice(0,10);
-    const last = localStorage.getItem('visit_counted_on');
-    const url = (last === today)
-      ? `https://api.countapi.xyz/get/${COUNTER_NS}/${COUNTER_KEY}`
-      : `https://api.countapi.xyz/hit/${COUNTER_NS}/${COUNTER_KEY}`;
-
-    try{
-      const res = await fetch(url, {cache:'no-store'});
-      const data = await res.json();
-      el.textContent = (data.value ?? 0).toLocaleString();
-      if (last !== today) localStorage.setItem('visit_counted_on', today);
-    }catch(e){
-      el.textContent = '-';
-    }
+    if (el) el.textContent = Number(v || 0).toLocaleString();
   }
-  updateVisitCounter();
+
+  // 같은 브라우저에서 "하루 1회만 증가" (중복 새로고침 방지)
+  const today = new Date().toISOString().slice(0, 10);
+  const last  = localStorage.getItem('visit_counted_on');
+
+  // CountAPI 권장 엔드포인트: update(증가), get(조회)
+  const base = 'https://api.countapi.xyz';
+  const url  = (last === today)
+    ? `${base}/get/${encodeURIComponent(NS)}/${encodeURIComponent(KEY)}`
+    : `${base}/update/${encodeURIComponent(NS)}/${encodeURIComponent(KEY)}?amount=1`;
+
+  // 6초 타임아웃 + 견고한 fetch
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort('timeout'), 6000);
+
+  fetch(url, { signal: ctrl.signal, cache: 'no-store', mode: 'cors' })
+    .then(res => {
+      clearTimeout(timer);
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return res.json();
+    })
+    .then(data => {
+      setCount(data.value);
+      if (last !== today) localStorage.setItem('visit_counted_on', today);
+    })
+    .catch(() => {
+      // 실패 시 UI만 깔끔하게 유지
+      setCount('—');
+    });
+})();
   
 </script>
 </body>
