@@ -177,7 +177,9 @@
       </ul>
     </div>
 
-    <footer>© 2025 NEIS Counter · Made with <strong>상우고등학교 교사 김경호t</strong></footer>
+    <footer>© 2025 NEIS Counter · Made with <strong>상우고등학교 교사 김경호t</strong>
+    <div class="hint">방문자 수: <b id="visitCount">-</b></div>
+    </footer>
   </div>
 
   <!-- 설정 다이얼로그 -->
@@ -543,6 +545,32 @@ document.getElementById('btnApply').addEventListener('click', applySpellFixes);
   if(lh) box.style.lineHeight = lh, lhRange.value = lh, lhVal.textContent = lh;
   calc();
 })();
+
+   // 네임스페이스/키는 본인 식별용으로 임의 문자열이면 됩니다.
+  const COUNTER_NS = 'arangg93-neis-counter2';
+  const COUNTER_KEY = 'visits';
+
+  async function updateVisitCounter(){
+    const el = document.getElementById('visitCount');
+    if (!el) return;
+    // 같은 브라우저에서 하루에 1번만 카운트(중복 새로고침 방지)
+    const today = new Date().toISOString().slice(0,10);
+    const last = localStorage.getItem('visit_counted_on');
+    const url = (last === today)
+      ? `https://api.countapi.xyz/get/${COUNTER_NS}/${COUNTER_KEY}`
+      : `https://api.countapi.xyz/hit/${COUNTER_NS}/${COUNTER_KEY}`;
+
+    try{
+      const res = await fetch(url, {cache:'no-store'});
+      const data = await res.json();
+      el.textContent = (data.value ?? 0).toLocaleString();
+      if (last !== today) localStorage.setItem('visit_counted_on', today);
+    }catch(e){
+      el.textContent = '-';
+    }
+  }
+  updateVisitCounter();
+  
 </script>
 </body>
 </html>
